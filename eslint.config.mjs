@@ -36,9 +36,18 @@ export default [
     },
     settings: { react: { version: "detect" } },
     rules: {
-      "prettier/prettier": "warn",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
-      "@typescript-eslint/no-explicit-any": "off",
+      "prettier/prettier": "error",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+
+      "@typescript-eslint/no-explicit-any": "error",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react-native/no-inline-styles": "off",
