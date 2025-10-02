@@ -3,7 +3,9 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { CardContainer } from "./common/CardContainer";
 import { mockScheduleData } from "../data/MockSchedule";
-import { TimeSlot } from "../types";
+import { Schedule } from "../types";
+import { getSchedulesByUserId } from "../services/schedules";
+import { useUserStore } from "../store/userStore";
 
 const parseISODate = (dateString: string): Date => {
   return new Date(dateString);
@@ -19,18 +21,21 @@ const formatTime = (date: Date | string): string => {
 };
 
 export const ScheduleCard = () => {
-  const [upcomingSlots, setUpcomingSlots] = useState<TimeSlot[]>([]);
+  const [upcomingSlots, setUpcomingSlots] = useState<Schedule[]>([]);
+
+  const userId = useUserStore((state) => state.profile?.uid);
 
   useEffect(() => {
     // TODO implement endpoint
     const fetchSchedule = async () => {
       try {
-        // const response = await fetch('your-api-endpoint');
-        // const data = await response.json();
+        const data: Schedule[] = await getSchedulesByUserId(userId);
+
+        console.log("data", data);
 
         const currentTime = new Date();
 
-        const sortedSlots = [...mockScheduleData].sort(
+        const sortedSlots = [...data].sort(
           (a, b) => parseISODate(a.time).getTime() - parseISODate(b.time).getTime(),
         );
 
