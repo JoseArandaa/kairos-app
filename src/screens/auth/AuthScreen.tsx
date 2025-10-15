@@ -22,9 +22,9 @@ import { AuthScreenProps } from "../../types";
 import { SvgUri } from "react-native-svg";
 
 const AuthScreen: React.FC<AuthScreenProps> = () => {
-  const [email, setEmail] = useState<string>("jose.aranda.et28@gmail.com");
+  const [email, setEmail] = useState<string>("juanfrank.dev@gmail.com");
   const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("94213471Jose.");
+  const [password, setPassword] = useState<string>("J72016HGp?");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin");
 
@@ -74,7 +74,7 @@ const AuthScreen: React.FC<AuthScreenProps> = () => {
 
         Alert.alert("Success", "Account created successfully!");
       }
-    } catch (error: any) {
+    } catch (error) {
       Alert.alert("Error", error.message);
     }
   };

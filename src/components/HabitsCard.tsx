@@ -1,7 +1,9 @@
 import { Flame, Star } from "phosphor-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { mockHabits } from "../data/MockHabits";
+import { auth } from "../services/firebase";
+import { updateHabitCheckin } from "../services/habitCheckin";
+import { getHabitsByUserId } from "../services/habits";
 import { Habit } from "../types";
 import { getDayName, getTodayIndex } from "../utils/dateUtils";
 import AnimatedItem from "./common/AnimatedItem";
@@ -9,7 +11,7 @@ import { CardContainer } from "./common/CardContainer";
 import { ChecklistItem } from "./common/ChecklistItem";
 
 export const HabitsCard = () => {
-  const [habits, setHabits] = useState(mockHabits);
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
   const [exitingId, setExitingId] = useState<string | null>(null);
 
@@ -34,8 +36,10 @@ export const HabitsCard = () => {
 
   useEffect(() => {
     (async () => {
-      await new Promise((r) => setTimeout(r, 800));
-      setHabits(mockHabits);
+      const habits = await getHabitsByUserId(auth.currentUser?.uid || "");
+      console.log("sas", habits);
+      // await new Promise((r) => setTimeout(r, 800));
+      setHabits(habits);
       setLoading(false);
     })();
   }, []);
@@ -47,25 +51,31 @@ export const HabitsCard = () => {
 
     setExitingId(habitId);
 
-    setHabits((current) =>
-      current.map((hab) => {
-        if (hab.id !== habitId) return hab;
-        const todayIndex = getTodayIndex();
-        const comp = Array.isArray(hab.completed) ? [...hab.completed] : [];
-        const updated = [...comp];
-        updated[todayIndex] = true;
+    try {
+      setHabits((current) =>
+        current.map((hab) => {
+          if (hab.id !== habitId) return hab;
+          const todayIndex = getTodayIndex();
+          const comp = Array.isArray(hab.completed) ? [...hab.completed] : [];
+          const updated = [...comp];
+          updated[todayIndex] = true;
 
-        const currentStreak = typeof hab.streak === "number" ? hab.streak : 0;
-        const newStreak = currentStreak + 1;
+          const currentStreak = typeof hab.streak === "number" ? hab.streak : 0;
+          const newStreak = currentStreak + 1;
 
-        return {
-          ...hab,
-          completed: updated,
-          streak: newStreak,
-          longestStreak: Math.max(hab.longestStreak || 0, newStreak),
-        } as Habit;
-      }),
-    );
+          return {
+            ...hab,
+            completed: updated,
+            streak: newStreak,
+            longestStreak: Math.max(hab.longestStreak || 0, newStreak),
+          } as Habit;
+        }),
+      );
+
+      updateHabitCheckin(habitId, { ...h, completed: h.completed[getTodayIndex()] });
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const shouldShowCompletionMessage = useMemo(() => {

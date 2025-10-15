@@ -73,7 +73,7 @@ export interface Task {
 // ============================================================================
 // SCHEDULE & TIME TYPES
 // ============================================================================
-export interface TimeSlot {
+export interface Schedule {
   id: string;
   time: string; // ISO 8601 time
   label: string;

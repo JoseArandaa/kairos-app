@@ -31,5 +31,7 @@ export const useAuth = (): UseAuthReturn => {
     return () => unsubscribe();
   }, []);
 
+  console.log("user", user);
+
   return { user, loading, error };
 };
