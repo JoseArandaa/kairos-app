@@ -35,6 +35,10 @@ export interface Habit {
   icon?: string;
 }
 
+export interface HabitForHome extends Habit {
+  checkins: HabitCheckin[];
+}
+
 export interface HabitCheckin {
   id: string;
   habitId: string;

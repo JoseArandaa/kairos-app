@@ -2,49 +2,35 @@ import { Flame, Star } from "phosphor-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { auth } from "../services/firebase";
-import { updateHabitCheckin } from "../services/habitCheckin";
-import { getHabitsByUserId } from "../services/habits";
-import { Habit } from "../types";
+import { createHabitCheckin } from "../services/habitCheckin";
+import { getHabitsAndCheckinsByUserIdAndDate } from "../services/habits";
+import { HabitForHome } from "../types";
 import { getDayName, getTodayIndex } from "../utils/dateUtils";
 import AnimatedItem from "./common/AnimatedItem";
 import { CardContainer } from "./common/CardContainer";
 import { ChecklistItem } from "./common/ChecklistItem";
+import { format } from "date-fns";
 
 export const HabitsCard = () => {
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habits, setHabits] = useState<HabitForHome[]>([]);
   const [loading, setLoading] = useState(true);
   const [exitingId, setExitingId] = useState<string | null>(null);
 
-  const todayHabits = useMemo(() => {
-    return habits.map((habit) => {
-      const todayIndex = getTodayIndex();
-      const isCompleted = habit.completed?.[todayIndex] || false;
-      return { ...habit, completedToday: isCompleted };
-    });
-  }, [habits]);
-
-  const displayHabits = useMemo(() => {
-    const activeHabits = todayHabits.filter((h) => !h.completedToday || exitingId === h.id);
-    if (exitingId && !activeHabits.some((h) => h.id === exitingId)) {
-      const exitingHabit = todayHabits.find((h) => h.id === exitingId);
-      if (exitingHabit) {
-        return [...activeHabits.slice(0, 3), exitingHabit];
-      }
-    }
-    return activeHabits.slice(0, 4);
-  }, [todayHabits, exitingId]);
-
   useEffect(() => {
     (async () => {
-      const habits = await getHabitsByUserId(auth.currentUser?.uid || "");
-      console.log("sas", habits);
+      const habits = await getHabitsAndCheckinsByUserIdAndDate(
+        auth.currentUser?.uid || "",
+        format(new Date(), "dd-MM-yyyy"),
+      );
+      console.log(format(new Date(), "dd-MM-yyyy"));
+      console.log("habits", habits);
       // await new Promise((r) => setTimeout(r, 800));
-      setHabits(habits);
+      setHabits(habits as HabitForHome[]);
       setLoading(false);
     })();
   }, []);
 
-  const handleToggleComplete = (habitId: string) => {
+  const handleToggleComplete = async (habitId: string) => {
     const h = habits.find((x) => x.id === habitId);
     if (!h) return;
     if (exitingId && exitingId !== habitId) return;
@@ -55,34 +41,37 @@ export const HabitsCard = () => {
       setHabits((current) =>
         current.map((hab) => {
           if (hab.id !== habitId) return hab;
-          const todayIndex = getTodayIndex();
-          const comp = Array.isArray(hab.completed) ? [...hab.completed] : [];
-          const updated = [...comp];
-          updated[todayIndex] = true;
 
           const currentStreak = typeof hab.streak === "number" ? hab.streak : 0;
           const newStreak = currentStreak + 1;
 
           return {
             ...hab,
-            completed: updated,
             streak: newStreak,
             longestStreak: Math.max(hab.longestStreak || 0, newStreak),
-          } as Habit;
+          } as HabitForHome;
         }),
       );
 
-      updateHabitCheckin(habitId, { ...h, completed: h.completed[getTodayIndex()] });
+      const res = await createHabitCheckin({ habitId });
+      console.log("res", res);
+      if (!res.success) {
+        throw new Error(res.message);
+      }
+      setExitingId(null);
     } catch (error) {
       console.error(error);
     }
   };
 
+  const displayHabits = useMemo(() => {
+    return habits.filter((habit) => habit.checkins.length > 0);
+  }, [habits]);
+
   const shouldShowCompletionMessage = useMemo(() => {
     if (loading) return false;
-    const incomplete = todayHabits.filter((h) => !h.completedToday);
-    return incomplete.length === 0 && todayHabits.length > 0;
-  }, [todayHabits, loading]);
+    return habits.every((habit) => habit.checkins.length > 0);
+  }, [habits, loading]);
 
   return (
     <CardContainer
@@ -102,7 +91,7 @@ export const HabitsCard = () => {
             ¡Buen trabajo! Los nuevos hábitos aparecerán aquí.
           </Text>
         </View>
-      ) : displayHabits.length === 0 ? (
+      ) : habits.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIllustration}>
             <Star size={48} color="#E0E0E0" weight="duotone" />
@@ -112,37 +101,40 @@ export const HabitsCard = () => {
         </View>
       ) : (
         <View>
-          {displayHabits.map((habit, index) => {
-            const isExiting = exitingId === habit.id;
-            return (
-              <AnimatedItem
-                key={habit.id}
-                pulse={isExiting}
-                isExiting={isExiting}
-                delayMs={500}
-                durationMs={300}
-                onExited={() => setExitingId(null)}
-                style={[
-                  index === displayHabits.length - 1 && styles.lastTaskItem,
-                  { overflow: "hidden" },
-                ]}
-              >
-                <ChecklistItem
-                  item={{
-                    title: habit.name,
-                    ...habit,
-                    completed: habit.completedToday,
-                    footerSecondaryText: `Racha más larga: ${habit.longestStreak} días`,
-                  }}
-                  onToggleComplete={handleToggleComplete}
-                  type="habit"
-                  showStreak
-                  showQuantity={!!(habit.quantity != null && habit.measure)}
-                  isLastItem={index === displayHabits.length - 1}
-                />
-              </AnimatedItem>
-            );
-          })}
+          {displayHabits.length > 0 &&
+            displayHabits.map((habit, index) => {
+              const isExiting = exitingId === habit.id;
+
+              if (habit.checkins.length > 0) return null;
+              return (
+                <AnimatedItem
+                  key={habit.id}
+                  pulse={isExiting}
+                  isExiting={isExiting}
+                  delayMs={500}
+                  durationMs={300}
+                  onExited={() => setExitingId(null)}
+                  style={[
+                    index === habits.length - 1 && styles.lastTaskItem,
+                    { overflow: "hidden" },
+                  ]}
+                >
+                  <ChecklistItem
+                    item={{
+                      title: habit.name,
+                      ...habit,
+                      completed: habit.checkins[0]?.completed || false,
+                      footerSecondaryText: `Racha más larga: ${habit.longestStreak} días`,
+                    }}
+                    onToggleComplete={handleToggleComplete}
+                    type="habit"
+                    showStreak
+                    showQuantity={!!(habit.quantity != null && habit.measure)}
+                    isLastItem={index === habits.length - 1}
+                  />
+                </AnimatedItem>
+              );
+            })}
         </View>
       )}
     </CardContainer>

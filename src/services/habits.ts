@@ -16,9 +16,12 @@ const getHabitsByUserId = async (userId: string): Promise<Habit[]> => {
   return response.json();
 };
 
-const getHabitByUserIdAndDate = async (userId: string, date: string): Promise<Habit[]> => {
+const getHabitsAndCheckinsByUserIdAndDate = async (
+  userId: string,
+  date: string,
+): Promise<Habit[]> => {
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_BACKEND_URL}/habit/user/${userId}/date/${date}`,
+    `${process.env.EXPO_PUBLIC_BACKEND_URL}/habit/get-habits-and-checkins-by-userid-and-date/?userId=${userId}&date=${date}`,
   );
   return response.json();
 };
@@ -51,7 +54,7 @@ export {
   createHabit,
   getHabit,
   getHabitsByUserId,
-  getHabitByUserIdAndDate,
+  getHabitsAndCheckinsByUserIdAndDate,
   updateHabit,
   deleteHabit,
 };

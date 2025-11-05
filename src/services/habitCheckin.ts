@@ -21,13 +21,21 @@ const getHabitCheckinsByUserId = async (userId: string): Promise<HabitCheckin[]>
 const createHabitCheckin = async (habit: Partial<HabitCheckin>) => {
   const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/habit-checkin`, {
     method: "POST",
-    body: JSON.stringify(habit),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      habitId: habit.habitId,
+      date: new Date().toISOString(),
+      completed: true,
+      quantity: 1,
+      notes: "",
+    }),
   });
   return response.json();
 };
 
 const updateHabitCheckin = async (id: string, habit: Partial<HabitCheckin>) => {
-  console.log("sas", habit);
   const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/habit-checkin/${id}`, {
     method: "PUT",
     body: JSON.stringify(habit),
