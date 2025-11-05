@@ -56,8 +56,59 @@ export const HabitsCard = () => {
       const res = await createHabitCheckin({ habitId });
       console.log("res", res);
       if (!res.success) {
+        // Revertir cambios si falla
+        setHabits((current) =>
+          current.map((hab) => {
+            if (hab.id !== habitId) return hab;
+            const currentStreak = typeof hab.streak === "number" ? hab.streak : 0;
+            return {
+              ...hab,
+              streak: Math.max(0, currentStreak - 1),
+            } as HabitForHome;
+          }),
+        );
+        setExitingId(null);
         throw new Error(res.message);
       }
+
+      // Actualizar el estado del hábito con el nuevo checkin completado
+      const todayDate = format(new Date(), "dd-MM-yyyy");
+      const now = new Date().toISOString();
+
+      setHabits((current) =>
+        current.map((hab) => {
+          if (hab.id !== habitId) return hab;
+
+          // Agregar el nuevo checkin con completed: true
+          // La respuesta del backend puede tener res.data con el checkin completo o solo el id
+          const newCheckin =
+            res.data && typeof res.data === "object" && "id" in res.data
+              ? {
+                  id: res.data.id,
+                  habitId: habitId,
+                  date: res.data.date || todayDate,
+                  completed: res.data.completed !== undefined ? res.data.completed : true,
+                  quantity: res.data.quantity || 1,
+                  notes: res.data.notes || "",
+                  createdAt: res.data.createdAt || now,
+                }
+              : {
+                  id: res.data?.id || "",
+                  habitId: habitId,
+                  date: todayDate,
+                  completed: true,
+                  quantity: 1,
+                  notes: "",
+                  createdAt: now,
+                };
+
+          return {
+            ...hab,
+            checkins: [...hab.checkins, newCheckin],
+          } as HabitForHome;
+        }),
+      );
+
       setExitingId(null);
     } catch (error) {
       console.error(error);
@@ -65,12 +116,22 @@ export const HabitsCard = () => {
   };
 
   const displayHabits = useMemo(() => {
-    return habits.filter((habit) => habit.checkins.length > 0);
+    return habits.filter((habit) => {
+      // Mostrar hábitos que no tienen check-ins
+      if (habit.checkins.length === 0) return true;
+      // Si tiene check-ins, mostrar solo si el checkin más reciente tiene completed: false
+      const latestCheckin = habit.checkins[habit.checkins.length - 1];
+      return !latestCheckin.completed;
+    });
   }, [habits]);
 
   const shouldShowCompletionMessage = useMemo(() => {
     if (loading) return false;
-    return habits.every((habit) => habit.checkins.length > 0);
+    // Mostrar mensaje de completado solo si todos los hábitos tienen check-ins completados
+    return habits.every((habit) => {
+      if (habit.checkins.length === 0) return false;
+      return habit.checkins.every((checkin) => checkin.completed);
+    });
   }, [habits, loading]);
 
   return (
@@ -105,7 +166,11 @@ export const HabitsCard = () => {
             displayHabits.map((habit, index) => {
               const isExiting = exitingId === habit.id;
 
-              if (habit.checkins.length > 0) return null;
+              // Obtener el estado de completado del checkin más reciente (si existe)
+              const latestCheckin =
+                habit.checkins.length > 0 ? habit.checkins[habit.checkins.length - 1] : null;
+              const isCompleted = latestCheckin?.completed || false;
+
               return (
                 <AnimatedItem
                   key={habit.id}
@@ -115,7 +180,7 @@ export const HabitsCard = () => {
                   durationMs={300}
                   onExited={() => setExitingId(null)}
                   style={[
-                    index === habits.length - 1 && styles.lastTaskItem,
+                    index === displayHabits.length - 1 && styles.lastTaskItem,
                     { overflow: "hidden" },
                   ]}
                 >
@@ -123,14 +188,14 @@ export const HabitsCard = () => {
                     item={{
                       title: habit.name,
                       ...habit,
-                      completed: habit.checkins[0]?.completed || false,
+                      completed: isCompleted,
                       footerSecondaryText: `Racha más larga: ${habit.longestStreak} días`,
                     }}
                     onToggleComplete={handleToggleComplete}
                     type="habit"
                     showStreak
                     showQuantity={!!(habit.quantity != null && habit.measure)}
-                    isLastItem={index === habits.length - 1}
+                    isLastItem={index === displayHabits.length - 1}
                   />
                 </AnimatedItem>
               );
