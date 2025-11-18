@@ -2,6 +2,7 @@ import React from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 import HomeScreen from "../screens/home/HomeScreen";
 import HabitsScreen from "../screens/habits/HabitsScreen";
+import AddHabitScreen from "../screens/habits/AddHabitScreen";
 import { HomeStackParamList } from "../types";
 
 const Stack = createStackNavigator<HomeStackParamList>();
@@ -35,6 +36,13 @@ const HomeStack: React.FC = () => {
           headerShown: true,
           title: "My Habits",
           headerBackTitle: "Back",
+        }}
+      />
+      <Stack.Screen
+        name="AddHabit"
+        component={AddHabitScreen}
+        options={{
+          headerShown: false,
         }}
       />
     </HomeNavigator>

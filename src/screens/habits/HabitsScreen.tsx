@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView } from "react-native";
-import { useRoute, RouteProp } from "@react-navigation/native";
+import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { Check, Plus, Flame } from "phosphor-react-native";
-import { Habit, HomeStackParamList } from "../../types";
+import { Habit, HomeStackNavigationProp, HomeStackParamList } from "../../types";
 
 type HabitsScreenRouteProp = RouteProp<HomeStackParamList, "HabitsScreen">;
 
@@ -12,6 +12,7 @@ const HabitsScreen = () => {
   const route = useRoute<HabitsScreenRouteProp>();
   const [timeRange, setTimeRange] = useState<TimeRange>("week");
   const [habits, setHabits] = useState<Habit[]>(route.params?.habits || []);
+  const navigation = useNavigation<HomeStackNavigationProp>();
 
   const daysOfWeek = ["D", "L", "M", "X", "J", "V", "S"];
   const months = [
@@ -185,7 +186,7 @@ const HabitsScreen = () => {
         ))}
       </ScrollView>
 
-      <TouchableOpacity style={styles.addButton} onPress={() => console.log("Add new habit")}>
+      <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate("AddHabit")}>
         <Plus size={20} color="#4CAF50" weight="bold" />
         <Text style={styles.addButtonText}>Nuevo Hábito</Text>
       </TouchableOpacity>

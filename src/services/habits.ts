@@ -1,4 +1,4 @@
-import { Habit } from "../types";
+import { Habit, HabitForHome } from "../types";
 
 const getHabits = async () => {
   const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/habit`);
@@ -19,19 +19,25 @@ const getHabitsByUserId = async (userId: string): Promise<Habit[]> => {
 const getHabitsAndCheckinsByUserIdAndDate = async (
   userId: string,
   date: string,
-): Promise<Habit[]> => {
+): Promise<HabitForHome[]> => {
   const response = await fetch(
     `${process.env.EXPO_PUBLIC_BACKEND_URL}/habit/get-habits-and-checkins-by-userid-and-date/?userId=${userId}&date=${date}`,
   );
-  return response.json();
+  const data = await response.json();
+  return data.data;
 };
 
 const createHabit = async (habit: Partial<Habit>) => {
-  const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/habits`, {
+  const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/habit`, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(habit),
   });
-  return response.json();
+  const data = await response.json();
+  console.log("data", data);
+  return data.data;
 };
 
 const updateHabit = async (id: string, habit: Partial<Habit>) => {

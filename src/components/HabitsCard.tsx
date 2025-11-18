@@ -1,31 +1,34 @@
 import { Flame, Star } from "phosphor-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { auth } from "../services/firebase";
 import { createHabitCheckin } from "../services/habitCheckin";
 import { getHabitsAndCheckinsByUserIdAndDate } from "../services/habits";
-import { HabitForHome } from "../types";
+import { HabitForHome, HomeStackParamList } from "../types";
 import { getDayName, getTodayIndex } from "../utils/dateUtils";
 import AnimatedItem from "./common/AnimatedItem";
 import { CardContainer } from "./common/CardContainer";
 import { ChecklistItem } from "./common/ChecklistItem";
 import { format } from "date-fns";
 
+type HabitsCardNavigationProp = StackNavigationProp<HomeStackParamList, "HomeMain">;
+
 export const HabitsCard = () => {
+  const navigation = useNavigation<HabitsCardNavigationProp>();
   const [habits, setHabits] = useState<HabitForHome[]>([]);
   const [loading, setLoading] = useState(true);
   const [exitingId, setExitingId] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("useEffect");
     (async () => {
-      const habits = await getHabitsAndCheckinsByUserIdAndDate(
+      const habitsResponse = await getHabitsAndCheckinsByUserIdAndDate(
         auth.currentUser?.uid || "",
         format(new Date(), "dd-MM-yyyy"),
       );
-      console.log(format(new Date(), "dd-MM-yyyy"));
-      console.log("habits", habits);
-      // await new Promise((r) => setTimeout(r, 800));
-      setHabits(habits as HabitForHome[]);
+      if (habitsResponse) setHabits(habitsResponse);
       setLoading(false);
     })();
   }, []);
@@ -128,10 +131,13 @@ export const HabitsCard = () => {
   const shouldShowCompletionMessage = useMemo(() => {
     if (loading) return false;
     // Mostrar mensaje de completado solo si todos los hábitos tienen check-ins completados
-    return habits.every((habit) => {
-      if (habit.checkins.length === 0) return false;
-      return habit.checkins.every((checkin) => checkin.completed);
-    });
+    if (habits.length > 0) {
+      return habits.every((habit) => {
+        if (habit.checkins.length === 0) return false;
+        return habit.checkins.every((checkin) => checkin.completed);
+      });
+    }
+    return false;
   }, [habits, loading]);
 
   return (
@@ -139,7 +145,7 @@ export const HabitsCard = () => {
       gradientColors={["#F443364D", "#F4433633"]}
       borderColor="#F4433614"
       cardTitle={"Habits " + getDayName(getTodayIndex())}
-      onViewDetails={() => {}}
+      onViewDetails={() => navigation.navigate("HabitsScreen")}
       icon={<Flame weight="fill" size={20} color="#F44336" />}
       iconColor="#F44336"
     >
@@ -152,7 +158,7 @@ export const HabitsCard = () => {
             ¡Buen trabajo! Los nuevos hábitos aparecerán aquí.
           </Text>
         </View>
-      ) : habits.length === 0 ? (
+      ) : habits?.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIllustration}>
             <Star size={48} color="#E0E0E0" weight="duotone" />
