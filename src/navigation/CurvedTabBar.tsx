@@ -1,8 +1,16 @@
 import React, { useMemo } from "react";
-import { View, TouchableOpacity, StyleSheet, Dimensions, Platform } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  Platform,
+  type ViewStyle,
+} from "react-native";
 import Svg, { Path } from "react-native-svg";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Barbell, CalendarBlank, House, User, Wallet } from "phosphor-react-native";
+import { colors } from "../theme/colors";
 
 const { width } = Dimensions.get("window");
 const HEIGHT = 70;
@@ -11,8 +19,8 @@ const BUTTON_RADIUS = 35;
 const CUTOUT_RADIUS = 42;
 const GAP = 5;
 
-const BAR_COLOR = "#1a233a";
-const ICON_ACTIVE = "#fff";
+const BAR_COLOR = colors.navy;
+const ICON_ACTIVE = colors.textOnDark;
 const ICON_INACTIVE = "#95a5a6";
 
 const getPath = (w: number): string => {
@@ -48,6 +56,12 @@ const HomeButton: React.FC<HomeButtonProps> = ({ onPress, isFocused }) => (
 
 export const CurvedTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const path = useMemo(() => getPath(width), [width]);
+
+  const focusedDescriptor = descriptors[state.routes[state.index].key];
+  const flatStyle = (StyleSheet.flatten(focusedDescriptor.options.tabBarStyle) ?? {}) as ViewStyle;
+  if (flatStyle.display === "none") {
+    return null;
+  }
 
   return (
     <View pointerEvents="box-none" style={styles.tabBarContainer}>
