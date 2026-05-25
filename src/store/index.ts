@@ -18,7 +18,7 @@ export function createPersistedStore<TState extends object>(
       persist(createState, {
         name,
         storage: createJSONStorage(() => AsyncStorage),
-        partialize: options.partialize,
+        ...(options.partialize ? { partialize: options.partialize } : {}),
       }),
       { name: `${name}-devtools`, host: "localhost", port: 8000 },
     ),
