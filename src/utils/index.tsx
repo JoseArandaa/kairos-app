@@ -18,3 +18,8 @@ export const sortByDueDate = <T extends { dueTimestamp?: string }>(items: T[]): 
     return new Date(a.dueTimestamp).getTime() - new Date(b.dueTimestamp).getTime();
   });
 };
+
+export function formatLabel(raw: string): string {
+  const spaced = raw.replace(/[_-]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
