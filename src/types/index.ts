@@ -103,6 +103,70 @@ export interface FinanceSummary {
 }
 
 // ============================================================================
+// GYM TYPES
+// ============================================================================
+export type MuscleGroup =
+  | "chest"
+  | "back"
+  | "shoulders"
+  | "biceps"
+  | "triceps"
+  | "legs"
+  | "glutes"
+  | "core"
+  | "calves"
+  | "forearms"
+  | "full_body";
+
+export type ExerciseEquipment =
+  | "barbell"
+  | "dumbbell"
+  | "machine"
+  | "cable"
+  | "bodyweight"
+  | "kettlebell"
+  | "band";
+
+export interface Exercise {
+  id: string;
+  name: string;
+  muscleGroup: MuscleGroup;
+  equipment: ExerciseEquipment;
+  isBuiltIn: boolean;
+}
+
+export interface WorkoutSet {
+  id: string;
+  weight: number; // kg
+  reps: number;
+  rpe?: number; // 1-10
+  completed: boolean;
+}
+
+export interface WorkoutExercise {
+  id: string;
+  exerciseId: string;
+  exerciseName: string;
+  sets: WorkoutSet[];
+  notes?: string;
+  order: number;
+}
+
+export type WorkoutStatus = "active" | "completed" | "cancelled";
+
+export interface Workout {
+  id: string;
+  userId: string;
+  name: string;
+  status: WorkoutStatus;
+  exercises: WorkoutExercise[];
+  startedAt: string;
+  completedAt?: string;
+  durationSeconds?: number;
+  notes?: string;
+}
+
+// ============================================================================
 // NAVIGATION TYPES
 // ============================================================================
 export type AuthStackParamList = {
@@ -130,10 +194,18 @@ export type TabParamList = {
   Wallet: undefined;
 };
 
+export type GymStackParamList = {
+  GymHome: undefined;
+  ActiveWorkout: { workoutId: string };
+};
+
 // Navigation Props
 export type AuthNavigationProp = StackNavigationProp<AuthStackParamList, "Auth">;
 export type TabNavigationProp = BottomTabNavigationProp<TabParamList>;
 export type HomeStackNavigationProp = StackNavigationProp<HomeStackParamList>;
+export type GymStackNavigationProp = StackNavigationProp<GymStackParamList>;
+
+export type ActiveWorkoutRouteProp = RouteProp<GymStackParamList, "ActiveWorkout">;
 
 // Route Props
 export type HabitsScreenRouteProp = RouteProp<HomeStackParamList, "HabitsScreen">;
