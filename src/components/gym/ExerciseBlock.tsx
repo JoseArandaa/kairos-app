@@ -1,124 +1,116 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from "react-native";
-import { Plus, Check, Barbell } from "phosphor-react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Barbell, Info, Timer } from "phosphor-react-native";
+import { useGymStore } from "../../store/gymStore";
+import { DurationPickerModal } from "./DurationPickerModal";
+import { WorkoutSetRow, WorkoutSetTableHeader } from "./WorkoutSetRow";
+import { SoftActionButton } from "../common/SoftActionButton";
+import { cardStyle } from "../../theme/styles";
 import { colors } from "../../theme/colors";
-import type { WorkoutExercise } from "../../types";
+import { formatTime } from "../../utils/workout";
+import type { WorkoutExercise, WorkoutSet } from "../../types";
 
 interface ExerciseBlockProps {
+  workoutId: string;
   exercise: WorkoutExercise;
-  onAddSet: (_weight: number, _reps: number) => void;
-  onToggleSet: (_setId: string) => void;
-  onRemoveSet: (_setId: string) => void;
+  onAddSet: () => void;
+  onUpdateSet: (
+    _setId: string,
+    _partial: Partial<Pick<WorkoutSet, "weight" | "reps" | "completed">>,
+  ) => void;
+  onDeleteSet: (_setId: string) => void;
+  onShowDetail?: () => void;
 }
 
 export function ExerciseBlock({
+  workoutId,
   exercise,
   onAddSet,
-  onToggleSet,
-  onRemoveSet,
+  onUpdateSet,
+  onDeleteSet,
+  onShowDetail,
 }: ExerciseBlockProps) {
-  const lastSet = exercise.sets[exercise.sets.length - 1];
-  const [weight, setWeight] = useState(lastSet ? String(lastSet.weight) : "");
-  const [reps, setReps] = useState(lastSet ? String(lastSet.reps) : "");
+  const restDefaultSeconds = useGymStore((s) => s.restDefaultSeconds);
+  const setExerciseRest = useGymStore((s) => s.setExerciseRest);
 
-  const handleAdd = () => {
-    const w = parseFloat(weight);
-    const r = parseInt(reps, 10);
-    if (Number.isNaN(w) || Number.isNaN(r) || r <= 0) return;
-    onAddSet(w, r);
-  };
+  const [restPickerOpen, setRestPickerOpen] = useState(false);
 
-  const handleConfirmRemove = (setId: string) => {
-    Alert.alert("Eliminar serie", "¿Seguro que quieres borrar esta serie?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: () => onRemoveSet(setId) },
-    ]);
-  };
+  const isCustomRest = exercise.restSeconds !== undefined;
+  const effectiveRest = exercise.restSeconds ?? restDefaultSeconds;
 
   return (
     <View style={styles.exerciseCard}>
       <View style={styles.exerciseHeader}>
-        <View style={styles.exerciseIconSmall}>
-          <Barbell size={18} color={colors.navy} weight="fill" />
-        </View>
-        <Text style={styles.exerciseTitle}>{exercise.exerciseName}</Text>
+        <TouchableOpacity
+          style={styles.titleArea}
+          onPress={onShowDetail}
+          disabled={!onShowDetail}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Ver detalle de ${exercise.exerciseName}`}
+        >
+          <View style={styles.exerciseIconSmall}>
+            <Barbell size={18} color={colors.navy} weight="fill" />
+          </View>
+          <Text style={styles.exerciseTitle} numberOfLines={1}>
+            {exercise.exerciseName}
+          </Text>
+          {onShowDetail && <Info size={16} color={colors.textMuted} />}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setRestPickerOpen(true)}
+          style={[styles.restChip, isCustomRest && styles.restChipCustom]}
+          activeOpacity={0.7}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Cambiar descanso. Actualmente ${formatTime(effectiveRest)}`}
+        >
+          <Timer
+            size={13}
+            color={isCustomRest ? colors.textOnDark : colors.textSecondary}
+            weight={isCustomRest ? "fill" : "regular"}
+          />
+          <Text style={[styles.restChipText, isCustomRest && styles.restChipTextCustom]}>
+            {formatTime(effectiveRest)}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.setsHeader}>
-        <Text style={[styles.setsHeaderText, { flex: 0.5 }]}>SET</Text>
-        <Text style={[styles.setsHeaderText, { flex: 1 }]}>KG</Text>
-        <Text style={[styles.setsHeaderText, { flex: 1 }]}>REPS</Text>
-        <Text style={[styles.setsHeaderText, { flex: 0.6, textAlign: "right" }]}>✓</Text>
-      </View>
+      <WorkoutSetTableHeader />
 
       {exercise.sets.map((s, i) => (
-        <TouchableOpacity
+        <WorkoutSetRow
           key={s.id}
-          style={[styles.setRow, s.completed && styles.setRowDone]}
-          onPress={() => onToggleSet(s.id)}
-          onLongPress={() => handleConfirmRemove(s.id)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.setCell, styles.setCellNum, { flex: 0.5 }]}>{i + 1}</Text>
-          <Text style={[styles.setCell, { flex: 1 }]}>{s.weight}</Text>
-          <Text style={[styles.setCell, { flex: 1 }]}>{s.reps}</Text>
-          <View style={[styles.setCheckWrap, { flex: 0.6 }]}>
-            {s.completed ? (
-              <View style={styles.checkDone}>
-                <Check size={14} color={colors.textOnDark} weight="bold" />
-              </View>
-            ) : (
-              <View style={styles.checkPending} />
-            )}
-          </View>
-        </TouchableOpacity>
+          set={s}
+          index={i}
+          onUpdate={(partial) => onUpdateSet(s.id, partial)}
+          onDelete={() => onDeleteSet(s.id)}
+        />
       ))}
 
-      <View style={styles.addSetRow}>
-        <View style={{ flex: 0.5 }} />
-        <TextInput
-          style={[styles.addSetInput, { flex: 1 }]}
-          placeholder="kg"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="decimal-pad"
-          value={weight}
-          onChangeText={setWeight}
-        />
-        <TextInput
-          style={[styles.addSetInput, { flex: 1 }]}
-          placeholder="reps"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="number-pad"
-          value={reps}
-          onChangeText={setReps}
-        />
-        <TouchableOpacity
-          style={styles.addSetBtn}
-          onPress={handleAdd}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Añadir serie"
-        >
-          <Plus size={18} color={colors.textOnDark} weight="bold" />
-        </TouchableOpacity>
-      </View>
+      <SoftActionButton label="Añadir serie" onPress={onAddSet} size="md" style={styles.addBtn} />
+
+      <DurationPickerModal
+        visible={restPickerOpen}
+        onClose={() => setRestPickerOpen(false)}
+        initialSeconds={effectiveRest}
+        onSave={(seconds) => setExerciseRest(workoutId, exercise.id, seconds)}
+        onReset={isCustomRest ? () => setExerciseRest(workoutId, exercise.id, null) : undefined}
+        title="Descanso de este ejercicio"
+        hint={
+          isCustomRest
+            ? 'Personalizado. Tocá "Usar default global" para volver al default.'
+            : `Default global: ${formatTime(restDefaultSeconds)}. Cambialo si querés un descanso distinto para este ejercicio.`
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  exerciseCard: {
-    backgroundColor: colors.cardBg,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  exerciseHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  exerciseCard: { ...cardStyle, borderRadius: 18, padding: 14, marginBottom: 14 },
+  exerciseHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 },
+  titleArea: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6 },
   exerciseIconSmall: {
     width: 32,
     height: 32,
@@ -126,70 +118,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.navySoftBg,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: 4,
   },
-  exerciseTitle: { fontSize: 16, fontWeight: "600", color: colors.textPrimary, flex: 1 },
+  exerciseTitle: { fontSize: 16, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
 
-  setsHeader: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 4 },
-  setsHeaderText: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  setRow: {
+  restChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
-    borderRadius: 8,
-  },
-  setRowDone: { backgroundColor: colors.successBg },
-  setCell: { fontSize: 15, color: colors.textPrimary, fontWeight: "500" },
-  setCellNum: { color: colors.textMuted },
-  setCheckWrap: { alignItems: "flex-end" },
-  checkDone: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.success,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkPending: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-
-  addSetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-    paddingHorizontal: 4,
-    gap: 8,
-  },
-  addSetInput: {
-    backgroundColor: colors.pageBg,
-    borderRadius: 10,
-    paddingVertical: 10,
+    gap: 4,
     paddingHorizontal: 10,
-    fontSize: 14,
-    color: colors.textPrimary,
-    textAlign: "center",
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.pageBg,
   },
-  addSetBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: colors.navy,
-    alignItems: "center",
-    justifyContent: "center",
+  restChipCustom: { backgroundColor: colors.navy },
+  restChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    fontVariant: ["tabular-nums"],
   },
+  restChipTextCustom: { color: colors.textOnDark },
+
+  addBtn: { marginTop: 12 },
 });
