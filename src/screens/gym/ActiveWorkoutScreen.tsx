@@ -1,47 +1,78 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useLayoutEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   ScrollView,
-  Modal,
-  FlatList,
   Alert,
   KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets, type Edge } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { Plus, Check, MagnifyingGlass, X, Barbell } from "phosphor-react-native";
+import { Check, Barbell, Timer } from "phosphor-react-native";
 import { useGymStore } from "../../store/gymStore";
-import { mockExercises } from "../../data/MockExercises";
 import { ExerciseBlock } from "../../components/gym/ExerciseBlock";
+import { EditTitleModal } from "../../components/gym/EditTitleModal";
+import { RestTimerBanner } from "../../components/gym/RestTimerBanner";
+import { RestTimerFullScreen } from "../../components/gym/RestTimerFullScreen";
+import { RestSettingsModal } from "../../components/gym/RestSettingsModal";
+import { ExercisePickerModal } from "../../components/gym/ExercisePickerModal";
+import { EmptyState } from "../../components/common/EmptyState";
+import { SoftActionButton } from "../../components/common/SoftActionButton";
+import { useEditableHeaderTitle } from "../../hooks/useEditableHeaderTitle";
+import { findLastSetForExercise } from "../../utils/workout";
+import { primaryShadow } from "../../theme/styles";
 import { colors } from "../../theme/colors";
-import { formatLabel } from "../../utils";
-import type { Exercise, GymStackNavigationProp } from "../../types";
+import type { GymStackNavigationProp } from "../../types";
 
 export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<GymStackNavigationProp>();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const activeWorkout = useGymStore((s) => s.activeWorkout);
-  const addExerciseToActive = useGymStore((s) => s.addExerciseToActive);
-  const addSet = useGymStore((s) => s.addSet);
-  const toggleSetCompleted = useGymStore((s) => s.toggleSetCompleted);
-  const removeSet = useGymStore((s) => s.removeSet);
+  const recentWorkouts = useGymStore((s) => s.recentWorkouts);
+  const addExerciseToWorkout = useGymStore((s) => s.addExerciseToWorkout);
+  const addWorkoutSet = useGymStore((s) => s.addWorkoutSet);
+  const editWorkoutSet = useGymStore((s) => s.editWorkoutSet);
+  const removeWorkoutSet = useGymStore((s) => s.removeWorkoutSet);
+  const startRest = useGymStore((s) => s.startRest);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const cancelWorkout = useGymStore((s) => s.cancelWorkout);
+  const renameWorkout = useGymStore((s) => s.renameWorkout);
+  const restEndsAt = useGymStore((s) => s.restEndsAt);
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [titleEditOpen, setTitleEditOpen] = useState(false);
+  const [restFullOpen, setRestFullOpen] = useState(false);
+  const [restSettingsOpen, setRestSettingsOpen] = useState(false);
 
-  const filteredExercises = useMemo(
-    () => mockExercises.filter((e) => e.name.toLowerCase().includes(search.toLowerCase())),
-    [search],
-  );
+  const workoutName = activeWorkout?.name ?? "";
+
+  const openTitleEdit = useCallback(() => setTitleEditOpen(true), []);
+  useEditableHeaderTitle(workoutName, openTitleEdit);
+
+  useLayoutEffect(() => {
+    if (!activeWorkout) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => {
+            if (restEndsAt) setRestFullOpen(true);
+            else setRestSettingsOpen(true);
+          }}
+          style={styles.headerRightBtn}
+          activeOpacity={0.7}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={restEndsAt ? "Abrir cronómetro de descanso" : "Configurar descanso"}
+        >
+          <Timer size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, activeWorkout, restEndsAt]);
 
   if (!activeWorkout) {
     return (
@@ -71,8 +102,28 @@ export default function ActiveWorkoutScreen() {
       );
       return;
     }
-    await finishWorkout();
-    navigation.goBack();
+    const incompleteCount = activeWorkout.exercises.reduce(
+      (acc, ex) => acc + ex.sets.filter((s) => !s.completed).length,
+      0,
+    );
+    const finalize = () => {
+      navigation.goBack();
+      void finishWorkout();
+    };
+    if (incompleteCount > 0) {
+      const label =
+        incompleteCount === 1 ? "1 serie sin completar" : `${incompleteCount} series sin completar`;
+      Alert.alert(
+        "Finalizar entrenamiento",
+        `${label} ${incompleteCount === 1 ? "será eliminada" : "serán eliminadas"} del registro. ¿Continuar?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Finalizar", onPress: finalize },
+        ],
+      );
+      return;
+    }
+    finalize();
   };
 
   const handleCancel = () => {
@@ -89,52 +140,58 @@ export default function ActiveWorkoutScreen() {
     ]);
   };
 
-  const handleSelectExercise = (exercise: Exercise) => {
-    addExerciseToActive(exercise);
-    setPickerOpen(false);
-    setSearch("");
-  };
-
   const footerBottom = insets.bottom + 12;
+  const footerHeight = 60;
+  const restBannerBottom = footerBottom + footerHeight + 8;
+  const scrollBottomPadding = footerBottom + footerHeight + (restEndsAt ? 90 : 20);
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={headerHeight}
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: footerBottom + 80 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPadding }]}
         keyboardShouldPersistTaps="handled"
       >
         {activeWorkout.exercises.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Barbell size={48} color={colors.border} weight="duotone" />
-            <Text style={styles.emptyTitle}>Aún no hay ejercicios</Text>
-            <Text style={styles.emptySubtitle}>Añade tu primer ejercicio para empezar.</Text>
-          </View>
+          <EmptyState
+            icon={<Barbell size={48} color={colors.border} weight="duotone" />}
+            title="Aún no hay ejercicios"
+            subtitle="Añade tu primer ejercicio para empezar."
+            style={styles.emptyState}
+          />
         ) : (
           activeWorkout.exercises.map((ex) => (
             <ExerciseBlock
               key={ex.id}
+              workoutId={activeWorkout.id}
               exercise={ex}
-              onAddSet={(weight, reps) => addSet(ex.id, weight, reps)}
-              onToggleSet={(setId) => toggleSetCompleted(ex.id, setId)}
-              onRemoveSet={(setId) => removeSet(ex.id, setId)}
+              onAddSet={() => {
+                const lastInThis = ex.sets[ex.sets.length - 1];
+                const fallback = lastInThis
+                  ? { weight: lastInThis.weight, reps: lastInThis.reps }
+                  : findLastSetForExercise(ex.exerciseId, recentWorkouts);
+                addWorkoutSet(activeWorkout.id, ex.id, fallback?.weight ?? 0, fallback?.reps ?? 0);
+              }}
+              onUpdateSet={(setId, partial) => {
+                const prev = ex.sets.find((s) => s.id === setId);
+                editWorkoutSet(activeWorkout.id, ex.id, setId, partial);
+                if (partial.completed === true && prev && !prev.completed) {
+                  startRest(ex.restSeconds);
+                }
+              }}
+              onDeleteSet={(setId) => removeWorkoutSet(activeWorkout.id, ex.id, setId)}
             />
           ))
         )}
 
-        <TouchableOpacity
-          style={styles.addExerciseBtn}
-          onPress={() => setPickerOpen(true)}
-          activeOpacity={0.85}
-        >
-          <Plus size={18} color={colors.navy} weight="bold" />
-          <Text style={styles.addExerciseText}>Añadir ejercicio</Text>
-        </TouchableOpacity>
+        <SoftActionButton label="Añadir ejercicio" onPress={() => setPickerOpen(true)} size="lg" />
       </ScrollView>
+
+      <RestTimerBanner bottom={restBannerBottom} onExpand={() => setRestFullOpen(true)} />
 
       <View style={[styles.footer, { bottom: footerBottom }]}>
         <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.85}>
@@ -146,64 +203,23 @@ export default function ActiveWorkoutScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal
+      <ExercisePickerModal
         visible={pickerOpen}
-        animationType="slide"
-        onRequestClose={() => setPickerOpen(false)}
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"] as Edge[]}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Elegir ejercicio</Text>
-            <TouchableOpacity
-              onPress={() => setPickerOpen(false)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Cerrar selector de ejercicio"
-            >
-              <X size={24} color={colors.navy} />
-            </TouchableOpacity>
-          </View>
+        onClose={() => setPickerOpen(false)}
+        onSelect={(ex) => addExerciseToWorkout(activeWorkout.id, ex)}
+      />
 
-          <View style={styles.searchWrapper}>
-            <MagnifyingGlass size={18} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar ejercicio..."
-              placeholderTextColor={colors.textMuted}
-              value={search}
-              onChangeText={setSearch}
-              autoFocus
-            />
-          </View>
+      <EditTitleModal
+        visible={titleEditOpen}
+        initialValue={workoutName}
+        onClose={() => setTitleEditOpen(false)}
+        onSave={(next) => renameWorkout(activeWorkout.id, next)}
+        title="Editar entrenamiento"
+      />
 
-          <FlatList
-            data={filteredExercises}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.exerciseListContent}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.exerciseRow}
-                onPress={() => handleSelectExercise(item)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.exerciseIcon}>
-                  <Barbell size={20} color={colors.navy} weight="fill" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseName}>{item.name}</Text>
-                  <Text style={styles.exerciseMeta}>
-                    {formatLabel(item.muscleGroup)} · {formatLabel(item.equipment)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <Text style={styles.empty}>Ningún ejercicio coincide con la búsqueda.</Text>
-            }
-          />
-        </SafeAreaView>
-      </Modal>
+      <RestSettingsModal visible={restSettingsOpen} onClose={() => setRestSettingsOpen(false)} />
+
+      <RestTimerFullScreen visible={restFullOpen} onClose={() => setRestFullOpen(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -214,22 +230,10 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  emptyState: { alignItems: "center", paddingVertical: 60, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 16, fontWeight: "600", color: colors.textPrimary, marginTop: 16 },
-  emptySubtitle: { fontSize: 13, color: colors.textMuted, marginTop: 4, textAlign: "center" },
-  emptyText: { color: colors.textMuted, textAlign: "center", marginVertical: 20 },
+  headerRightBtn: { paddingHorizontal: 12, paddingVertical: 6 },
 
-  addExerciseBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: colors.navySoftBg,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  addExerciseText: { color: colors.textPrimary, fontWeight: "600", fontSize: 15 },
+  emptyState: { paddingVertical: 60, paddingHorizontal: 32 },
+  emptyText: { color: colors.textMuted, textAlign: "center", marginVertical: 20 },
 
   footer: {
     position: "absolute",
@@ -258,60 +262,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    ...primaryShadow,
   },
   finishBtnText: { color: colors.textOnDark, fontWeight: "600", fontSize: 15 },
-
-  modalContainer: { flex: 1, backgroundColor: colors.pageBg },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  modalTitle: { fontSize: 20, fontWeight: "700", color: colors.textPrimary },
-  searchWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.cardBg,
-    marginHorizontal: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  searchInput: { flex: 1, fontSize: 15, color: colors.textPrimary, padding: 0 },
-
-  exerciseListContent: { paddingHorizontal: 16, paddingBottom: 24 },
-  exerciseRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.cardBg,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    marginVertical: 4,
-    gap: 12,
-  },
-  exerciseIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.navySoftBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  exerciseName: { fontSize: 15, fontWeight: "500", color: colors.textPrimary },
-  exerciseMeta: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  empty: { textAlign: "center", color: colors.textMuted, paddingVertical: 24, fontSize: 14 },
 });
