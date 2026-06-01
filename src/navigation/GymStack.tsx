@@ -4,6 +4,7 @@ import GymHomeScreen from "../screens/gym/GymHomeScreen";
 import ActiveWorkoutScreen from "../screens/gym/ActiveWorkoutScreen";
 import ExerciseDetailScreen from "../screens/gym/ExerciseDetailScreen";
 import WorkoutDetailScreen from "../screens/gym/WorkoutDetailScreen";
+import WorkoutHistoryScreen from "../screens/gym/WorkoutHistoryScreen";
 import { GymStackParamList } from "../types";
 
 const Stack = createStackNavigator<GymStackParamList>();
@@ -30,6 +31,11 @@ const GymStack: React.FC = () => (
       name="WorkoutDetail"
       component={WorkoutDetailScreen}
       options={{ headerShown: true, title: "Entrenamiento", headerBackTitle: "Back" }}
+    />
+    <Stack.Screen
+      name="WorkoutHistory"
+      component={WorkoutHistoryScreen}
+      options={{ headerShown: true, title: "Historial", headerBackTitle: "Back" }}
     />
   </Stack.Navigator>
 );
