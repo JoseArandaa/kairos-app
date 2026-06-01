@@ -133,13 +133,16 @@ export interface Exercise {
   muscleGroup: MuscleGroup;
   equipment: ExerciseEquipment;
   isBuiltIn: boolean;
+  instructions: string[];
+  secondaryMuscles?: MuscleGroup[];
+  tips?: string[];
 }
 
 export interface WorkoutSet {
   id: string;
   weight: number; // kg
   reps: number;
-  rpe?: number; // 1-10
+  rpe?: number;
   completed: boolean;
 }
 
@@ -150,6 +153,7 @@ export interface WorkoutExercise {
   sets: WorkoutSet[];
   notes?: string;
   order: number;
+  restSeconds?: number;
 }
 
 export type WorkoutStatus = "active" | "completed" | "cancelled";
@@ -164,6 +168,39 @@ export interface Workout {
   completedAt?: string;
   durationSeconds?: number;
   notes?: string;
+  updatedAt: string;
+}
+
+// ----- Routines & Templates -----
+
+export interface RoutineExercise {
+  id: string;
+  exerciseId: string;
+  exerciseName: string;
+  targetSets: number;
+  targetReps?: number;
+  targetWeight?: number;
+  order: number;
+  restSeconds?: number;
+}
+
+export interface Routine {
+  id: string;
+  userId: string;
+  name: string;
+  exercises: RoutineExercise[];
+  createdAt: string;
+  updatedAt: string;
+  isBuiltIn: false;
+}
+
+export interface RoutineTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  category: "ppl" | "upper_lower" | "full_body" | "other";
+  exercises: RoutineExercise[];
+  isBuiltIn: true;
 }
 
 // ============================================================================
@@ -197,6 +234,12 @@ export type TabParamList = {
 export type GymStackParamList = {
   GymHome: undefined;
   ActiveWorkout: { workoutId: string };
+  ExerciseDetail: { exerciseId: string };
+  Routines: undefined;
+  RoutineEditor: { routineId?: string } | undefined;
+  RoutineDetail: { kind: "routine" | "template"; id: string };
+  WorkoutDetail: { workoutId: string };
+  WorkoutHistory: undefined;
 };
 
 // Navigation Props
@@ -206,6 +249,10 @@ export type HomeStackNavigationProp = StackNavigationProp<HomeStackParamList>;
 export type GymStackNavigationProp = StackNavigationProp<GymStackParamList>;
 
 export type ActiveWorkoutRouteProp = RouteProp<GymStackParamList, "ActiveWorkout">;
+export type ExerciseDetailRouteProp = RouteProp<GymStackParamList, "ExerciseDetail">;
+export type RoutineEditorRouteProp = RouteProp<GymStackParamList, "RoutineEditor">;
+export type RoutineDetailRouteProp = RouteProp<GymStackParamList, "RoutineDetail">;
+export type WorkoutDetailRouteProp = RouteProp<GymStackParamList, "WorkoutDetail">;
 
 // Route Props
 export type HabitsScreenRouteProp = RouteProp<HomeStackParamList, "HabitsScreen">;
