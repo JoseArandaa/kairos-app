@@ -6,12 +6,15 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import AuthScreen from "./src/screens/auth/AuthScreen";
 import TabNavigator from "./src/navigation/TabNavigator";
 import { useAuth } from "./src/hooks/useAuth";
+import { useNetworkSync } from "./src/hooks/useNetworkSync";
+import { SyncStatusBanner } from "./src/components/common/SyncStatusBanner";
 import { AuthStackParamList } from "./src/types";
 
 const Stack = createStackNavigator<AuthStackParamList>();
 
 const App: React.FC = () => {
   const { user, loading } = useAuth();
+  useNetworkSync();
 
   if (loading) {
     return null;
@@ -33,6 +36,7 @@ const App: React.FC = () => {
             <Stack.Screen name="Auth" component={AuthScreen} />
           )}
         </Stack.Navigator>
+        {user && <SyncStatusBanner />}
       </NavigationContainer>
     </SafeAreaProvider>
   );
