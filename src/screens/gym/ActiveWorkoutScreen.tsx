@@ -184,6 +184,9 @@ export default function ActiveWorkoutScreen() {
                 }
               }}
               onDeleteSet={(setId) => removeWorkoutSet(activeWorkout.id, ex.id, setId)}
+              onShowDetail={() =>
+                navigation.navigate("ExerciseDetail", { exerciseId: ex.exerciseId })
+              }
             />
           ))
         )}
@@ -207,6 +210,7 @@ export default function ActiveWorkoutScreen() {
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={(ex) => addExerciseToWorkout(activeWorkout.id, ex)}
+        onShowDetail={(id) => navigation.navigate("ExerciseDetail", { exerciseId: id })}
       />
 
       <EditTitleModal
