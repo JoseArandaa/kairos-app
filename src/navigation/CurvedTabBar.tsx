@@ -13,7 +13,8 @@ import { Barbell, CalendarBlank, House, User, Wallet } from "phosphor-react-nati
 import { colors } from "../theme/colors";
 
 const { width } = Dimensions.get("window");
-const HEIGHT = 70;
+export const TAB_BAR_HEIGHT = 70;
+const HEIGHT = TAB_BAR_HEIGHT;
 
 const BUTTON_RADIUS = 35;
 const CUTOUT_RADIUS = 42;

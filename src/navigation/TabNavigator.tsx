@@ -12,7 +12,13 @@ import GymStack from "./GymStack";
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const GYM_FOCUS_ROUTES: ReadonlySet<keyof GymStackParamList> = new Set(["ActiveWorkout"]);
+const GYM_FOCUS_ROUTES: ReadonlySet<keyof GymStackParamList> = new Set([
+  "ActiveWorkout",
+  "ExerciseDetail",
+  "RoutineDetail",
+  "WorkoutDetail",
+  "RoutineEditor",
+]);
 
 const gymTabOptions = ({ route }: { route: RouteProp<TabParamList, "Gym"> }) => {
   const focused = getFocusedRouteNameFromRoute(route) as keyof GymStackParamList | undefined;
