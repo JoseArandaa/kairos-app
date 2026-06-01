@@ -5,6 +5,9 @@ import ActiveWorkoutScreen from "../screens/gym/ActiveWorkoutScreen";
 import ExerciseDetailScreen from "../screens/gym/ExerciseDetailScreen";
 import WorkoutDetailScreen from "../screens/gym/WorkoutDetailScreen";
 import WorkoutHistoryScreen from "../screens/gym/WorkoutHistoryScreen";
+import RoutinesScreen from "../screens/gym/RoutinesScreen";
+import RoutineEditorScreen from "../screens/gym/RoutineEditorScreen";
+import RoutineDetailScreen from "../screens/gym/RoutineDetailScreen";
 import { GymStackParamList } from "../types";
 
 const Stack = createStackNavigator<GymStackParamList>();
@@ -36,6 +39,21 @@ const GymStack: React.FC = () => (
       name="WorkoutHistory"
       component={WorkoutHistoryScreen}
       options={{ headerShown: true, title: "Historial", headerBackTitle: "Back" }}
+    />
+    <Stack.Screen
+      name="Routines"
+      component={RoutinesScreen}
+      options={{ headerShown: true, title: "Rutinas", headerBackTitle: "Back" }}
+    />
+    <Stack.Screen
+      name="RoutineEditor"
+      component={RoutineEditorScreen}
+      options={{ headerShown: true, title: "Editar rutina", headerBackTitle: "Back" }}
+    />
+    <Stack.Screen
+      name="RoutineDetail"
+      component={RoutineDetailScreen}
+      options={{ headerShown: true, title: "Detalle", headerBackTitle: "Back" }}
     />
   </Stack.Navigator>
 );
