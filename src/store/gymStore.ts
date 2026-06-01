@@ -1,188 +1,503 @@
 import { StateCreator } from "zustand";
 import { useStore } from "zustand";
 import { createPersistedStore } from ".";
-import type { Exercise, Workout, WorkoutExercise, WorkoutSet } from "../types";
-import { upsertWorkout, fetchRecentWorkouts, fetchActiveWorkout } from "../services/gym";
-
-function makeId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
+import type {
+  Exercise,
+  Routine,
+  RoutineTemplate,
+  Workout,
+  WorkoutExercise,
+  WorkoutSet,
+} from "../types";
+import {
+  upsertWorkout,
+  fetchRecentWorkouts,
+  fetchActiveWorkout,
+  upsertRoutine,
+  deleteRoutine as deleteRoutineDoc,
+  fetchRoutines,
+} from "../services/gym";
+import { getErrorMessage, makeId } from "../utils";
+import { pickNewerWorkout, routineExercisesToWorkoutExercises } from "../utils/workout";
 
 export interface GymState {
   activeWorkout: Workout | null;
   recentWorkouts: Workout[];
+  routines: Routine[];
   isLoadingHistory: boolean;
+  isLoadingRoutines: boolean;
   isFinishing: boolean;
   error: string | null;
+  restEndsAt: string | null;
+  restDurationSeconds: number;
+  restDefaultSeconds: number;
+  pendingSyncIds: string[];
+  isOnline: boolean;
+  isSyncing: boolean;
 
   startWorkout: (_userId: string, _name?: string) => Workout;
-  addExerciseToActive: (_exercise: Exercise) => void;
-  addSet: (_workoutExerciseId: string, _weight: number, _reps: number) => void;
-  toggleSetCompleted: (_workoutExerciseId: string, _setId: string) => void;
-  removeSet: (_workoutExerciseId: string, _setId: string) => void;
-  finishWorkout: () => Promise<void>;
+  startWorkoutFromTemplate: (_userId: string, _template: RoutineTemplate) => Workout;
+  startWorkoutFromRoutine: (_userId: string, _routine: Routine) => Workout;
+  addExerciseToWorkout: (_workoutId: string, _exercise: Exercise) => void;
+  setExerciseRest: (
+    _workoutId: string,
+    _workoutExerciseId: string,
+    _seconds: number | null,
+  ) => void;
+  renameWorkout: (_workoutId: string, _name: string) => Promise<void>;
+  editWorkoutSet: (
+    _workoutId: string,
+    _workoutExerciseId: string,
+    _setId: string,
+    _partial: Partial<Pick<WorkoutSet, "weight" | "reps" | "completed">>,
+  ) => void;
+  addWorkoutSet: (
+    _workoutId: string,
+    _workoutExerciseId: string,
+    _weight: number,
+    _reps: number,
+  ) => void;
+  removeWorkoutSet: (_workoutId: string, _workoutExerciseId: string, _setId: string) => void;
+  setWorkoutDuration: (_workoutId: string, _seconds: number) => void;
+  finishWorkout: (_durationSeconds?: number) => Promise<void>;
   cancelWorkout: () => Promise<void>;
+  startRest: (_seconds?: number) => void;
+  adjustRest: (_deltaSeconds: number) => void;
+  skipRest: () => void;
+  setRestDefault: (_seconds: number) => void;
   loadRecentWorkouts: (_userId: string) => Promise<void>;
   loadActiveWorkout: (_userId: string) => Promise<void>;
+  loadRoutines: (_userId: string) => Promise<void>;
+  saveRoutine: (_routine: Routine) => Promise<void>;
+  removeRoutine: (_routineId: string) => Promise<void>;
+  setOnline: (_isOnline: boolean) => void;
+  retryPendingSyncs: () => Promise<void>;
   clearError: () => void;
 }
 
-const createGymSlice: StateCreator<GymState, [], []> = (set, get) => ({
-  activeWorkout: null,
-  recentWorkouts: [],
-  isLoadingHistory: false,
-  isFinishing: false,
-  error: null,
+function applyWorkoutUpdate(
+  state: GymState,
+  workoutId: string,
+  updater: (_w: Workout) => Workout,
+): { workout: Workout; patch: Partial<GymState> } | null {
+  if (state.activeWorkout?.id === workoutId) {
+    const workout = updater(state.activeWorkout);
+    return { workout, patch: { activeWorkout: workout } };
+  }
+  const idx = state.recentWorkouts.findIndex((w) => w.id === workoutId);
+  if (idx === -1) return null;
+  const workout = updater(state.recentWorkouts[idx]);
+  const next = [...state.recentWorkouts];
+  next[idx] = workout;
+  return { workout, patch: { recentWorkouts: next } };
+}
 
-  startWorkout: (userId, name) => {
+const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
+  const inFlight = new Map<string, Promise<void>>();
+
+  const enqueueSync = (workoutId: string) => {
+    set((s) =>
+      s.pendingSyncIds.includes(workoutId)
+        ? s
+        : { pendingSyncIds: [...s.pendingSyncIds, workoutId] },
+    );
+  };
+
+  const dequeueSync = (workoutId: string) => {
+    set((s) => ({ pendingSyncIds: s.pendingSyncIds.filter((id) => id !== workoutId) }));
+  };
+
+  const tryUpsert = async (workout: Workout): Promise<boolean> => {
+    if (!get().isOnline) return false;
+    try {
+      await upsertWorkout(workout);
+      if (get().error) set({ error: null });
+      return true;
+    } catch (err) {
+      set({ error: getErrorMessage(err) });
+      return false;
+    }
+  };
+
+  const lookupWorkout = (workoutId: string): Workout | undefined => {
+    const s = get();
+    return s.activeWorkout?.id === workoutId
+      ? s.activeWorkout
+      : s.recentWorkouts.find((w) => w.id === workoutId);
+  };
+
+  const serializeUpsert = (workoutId: string, explicit?: Workout): Promise<void> => {
+    const prev = inFlight.get(workoutId) ?? Promise.resolve();
+    const promise = prev
+      .catch(() => {})
+      .then(async () => {
+        const workout = explicit ?? lookupWorkout(workoutId);
+        if (!workout) {
+          dequeueSync(workoutId);
+          return;
+        }
+        const ok = await tryUpsert(workout);
+        if (ok) dequeueSync(workoutId);
+        else enqueueSync(workoutId);
+      });
+    inFlight.set(workoutId, promise);
+    void promise.finally(() => {
+      if (inFlight.get(workoutId) === promise) inFlight.delete(workoutId);
+    });
+    return promise;
+  };
+
+  const mutateWorkout = async (
+    workoutId: string,
+    updater: (_w: Workout) => Workout,
+  ): Promise<Workout | null> => {
+    const stampedUpdater = (w: Workout): Workout => ({
+      ...updater(w),
+      updatedAt: new Date().toISOString(),
+    });
+    const result = applyWorkoutUpdate(get(), workoutId, stampedUpdater);
+    if (!result) return null;
+    set(result.patch);
+    await serializeUpsert(workoutId);
+    return result.workout;
+  };
+
+  const createAndPersistWorkout = (
+    userId: string,
+    opts: { name: string; exercises: WorkoutExercise[] },
+  ): Workout => {
     const now = new Date().toISOString();
     const workout: Workout = {
       id: makeId("wo"),
       userId,
-      name: name ?? "Workout",
+      name: opts.name,
       status: "active",
-      exercises: [],
+      exercises: opts.exercises,
       startedAt: now,
+      updatedAt: now,
     };
     set({ activeWorkout: workout, error: null });
-    void upsertWorkout(workout).catch((err) =>
-      set({ error: `No se pudo guardar en Firestore: ${(err as Error).message}` }),
-    );
+    void serializeUpsert(workout.id);
     return workout;
-  },
+  };
 
-  addExerciseToActive: (exercise) => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const newExercise: WorkoutExercise = {
-      id: makeId("we"),
-      exerciseId: exercise.id,
-      exerciseName: exercise.name,
-      sets: [],
-      order: active.exercises.length,
-    };
-    const updated: Workout = {
-      ...active,
-      exercises: [...active.exercises, newExercise],
-    };
-    set({ activeWorkout: updated });
-    void upsertWorkout(updated).catch((err) => set({ error: (err as Error).message }));
-  },
+  return {
+    activeWorkout: null,
+    recentWorkouts: [],
+    routines: [],
+    isLoadingHistory: false,
+    isLoadingRoutines: false,
+    isFinishing: false,
+    error: null,
+    restEndsAt: null,
+    restDurationSeconds: 0,
+    restDefaultSeconds: 60,
+    pendingSyncIds: [],
+    isOnline: true,
+    isSyncing: false,
 
-  addSet: (workoutExerciseId, weight, reps) => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const newSet: WorkoutSet = {
-      id: makeId("set"),
-      weight,
-      reps,
-      completed: true,
-    };
-    const updated: Workout = {
-      ...active,
-      exercises: active.exercises.map((ex) =>
-        ex.id === workoutExerciseId ? { ...ex, sets: [...ex.sets, newSet] } : ex,
-      ),
-    };
-    set({ activeWorkout: updated });
-    void upsertWorkout(updated).catch((err) => set({ error: (err as Error).message }));
-  },
+    startWorkout: (userId, name) =>
+      createAndPersistWorkout(userId, { name: name ?? "Workout", exercises: [] }),
 
-  toggleSetCompleted: (workoutExerciseId, setId) => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const updated: Workout = {
-      ...active,
-      exercises: active.exercises.map((ex) =>
-        ex.id === workoutExerciseId
-          ? {
-              ...ex,
-              sets: ex.sets.map((s) => (s.id === setId ? { ...s, completed: !s.completed } : s)),
-            }
-          : ex,
-      ),
-    };
-    set({ activeWorkout: updated });
-    void upsertWorkout(updated).catch((err) => set({ error: (err as Error).message }));
-  },
+    startWorkoutFromTemplate: (userId, template) =>
+      createAndPersistWorkout(userId, {
+        name: template.name,
+        exercises: routineExercisesToWorkoutExercises(template.exercises),
+      }),
 
-  removeSet: (workoutExerciseId, setId) => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const updated: Workout = {
-      ...active,
-      exercises: active.exercises.map((ex) =>
-        ex.id === workoutExerciseId ? { ...ex, sets: ex.sets.filter((s) => s.id !== setId) } : ex,
-      ),
-    };
-    set({ activeWorkout: updated });
-    void upsertWorkout(updated).catch((err) => set({ error: (err as Error).message }));
-  },
+    startWorkoutFromRoutine: (userId, routine) =>
+      createAndPersistWorkout(userId, {
+        name: routine.name,
+        exercises: routineExercisesToWorkoutExercises(routine.exercises),
+      }),
 
-  finishWorkout: async () => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const completedAt = new Date().toISOString();
-    const durationSeconds = Math.round(
-      (new Date(completedAt).getTime() - new Date(active.startedAt).getTime()) / 1000,
-    );
-    const finished: Workout = {
-      ...active,
-      status: "completed",
-      completedAt,
-      durationSeconds,
-    };
-    set({ isFinishing: true, error: null });
-    try {
-      await upsertWorkout(finished);
+    addExerciseToWorkout: (workoutId, exercise) => {
+      void mutateWorkout(workoutId, (w) => {
+        const newExercise: WorkoutExercise = {
+          id: makeId("we"),
+          exerciseId: exercise.id,
+          exerciseName: exercise.name,
+          sets: [],
+          order: w.exercises.length,
+        };
+        return { ...w, exercises: [...w.exercises, newExercise] };
+      });
+    },
+
+    setExerciseRest: (workoutId, workoutExerciseId, seconds) => {
+      void mutateWorkout(workoutId, (w) => ({
+        ...w,
+        exercises: w.exercises.map((ex) => {
+          if (ex.id !== workoutExerciseId) return ex;
+          if (seconds === null) {
+            const { restSeconds: _r, ...rest } = ex;
+            void _r;
+            return rest;
+          }
+          return { ...ex, restSeconds: Math.max(10, Math.min(600, Math.round(seconds))) };
+        }),
+      }));
+    },
+
+    renameWorkout: async (workoutId, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const state = get();
+      const current =
+        state.activeWorkout?.id === workoutId
+          ? state.activeWorkout
+          : state.recentWorkouts.find((w) => w.id === workoutId);
+      if (!current || current.name === trimmed) return;
+      await mutateWorkout(workoutId, (w) => ({ ...w, name: trimmed }));
+    },
+
+    editWorkoutSet: (workoutId, workoutExerciseId, setId, partial) => {
+      void mutateWorkout(workoutId, (w) => ({
+        ...w,
+        exercises: w.exercises.map((ex) =>
+          ex.id === workoutExerciseId
+            ? {
+                ...ex,
+                sets: ex.sets.map((s) => (s.id === setId ? { ...s, ...partial } : s)),
+              }
+            : ex,
+        ),
+      }));
+    },
+
+    addWorkoutSet: (workoutId, workoutExerciseId, weight, reps) => {
+      const newSet: WorkoutSet = {
+        id: makeId("set"),
+        weight,
+        reps,
+        completed: false,
+      };
+      void mutateWorkout(workoutId, (w) => ({
+        ...w,
+        exercises: w.exercises.map((ex) =>
+          ex.id === workoutExerciseId ? { ...ex, sets: [...ex.sets, newSet] } : ex,
+        ),
+      }));
+    },
+
+    removeWorkoutSet: (workoutId, workoutExerciseId, setId) => {
+      void mutateWorkout(workoutId, (w) => ({
+        ...w,
+        exercises: w.exercises
+          .map((ex) =>
+            ex.id === workoutExerciseId
+              ? { ...ex, sets: ex.sets.filter((s) => s.id !== setId) }
+              : ex,
+          )
+          .filter((ex) => ex.sets.length > 0)
+          .map((ex, idx) => ({ ...ex, order: idx })),
+      }));
+    },
+
+    setWorkoutDuration: (workoutId, seconds) => {
+      if (!Number.isFinite(seconds) || seconds < 0) return;
+      void mutateWorkout(workoutId, (w) => {
+        const completedAt = new Date(
+          new Date(w.startedAt).getTime() + seconds * 1000,
+        ).toISOString();
+        return { ...w, durationSeconds: Math.round(seconds), completedAt };
+      });
+    },
+
+    finishWorkout: async (durationSeconds) => {
+      const active = get().activeWorkout;
+      if (!active) return;
+      const startMs = new Date(active.startedAt).getTime();
+      const dur =
+        typeof durationSeconds === "number" && durationSeconds >= 0
+          ? Math.round(durationSeconds)
+          : Math.round((Date.now() - startMs) / 1000);
+      const completedAt = new Date(startMs + dur * 1000).toISOString();
+      const cleanedExercises = active.exercises
+        .map((ex) => ({ ...ex, sets: ex.sets.filter((s) => s.completed) }))
+        .filter((ex) => ex.sets.length > 0)
+        .map((ex, idx) => ({ ...ex, order: idx }));
+      const finished: Workout = {
+        ...active,
+        exercises: cleanedExercises,
+        status: "completed",
+        completedAt,
+        durationSeconds: dur,
+        updatedAt: new Date().toISOString(),
+      };
       set((s) => ({
         activeWorkout: null,
         recentWorkouts: [finished, ...s.recentWorkouts],
         isFinishing: false,
+        restEndsAt: null,
+        restDurationSeconds: 0,
+        error: null,
       }));
-    } catch (err) {
-      set({ error: (err as Error).message, isFinishing: false });
-    }
-  },
+      await serializeUpsert(finished.id);
+    },
 
-  cancelWorkout: async () => {
-    const active = get().activeWorkout;
-    if (!active) return;
-    const cancelled: Workout = { ...active, status: "cancelled" };
-    try {
-      await upsertWorkout(cancelled);
-    } catch (err) {
-      set({ error: (err as Error).message });
-    }
-    set({ activeWorkout: null });
-  },
+    cancelWorkout: async () => {
+      const active = get().activeWorkout;
+      if (!active) return;
+      const cancelled: Workout = {
+        ...active,
+        status: "cancelled",
+        updatedAt: new Date().toISOString(),
+      };
+      set({ activeWorkout: null, restEndsAt: null, restDurationSeconds: 0 });
+      await serializeUpsert(cancelled.id, cancelled);
+    },
 
-  loadRecentWorkouts: async (userId) => {
-    set({ isLoadingHistory: true, error: null });
-    try {
-      const workouts = await fetchRecentWorkouts(userId);
-      set({ recentWorkouts: workouts, isLoadingHistory: false });
-    } catch (err) {
-      set({ error: (err as Error).message, isLoadingHistory: false });
-    }
-  },
+    loadRecentWorkouts: async (userId) => {
+      set({ isLoadingHistory: true, error: null });
+      try {
+        const remote = await fetchRecentWorkouts(userId);
+        set((s) => {
+          const merged = remote.map((rw) => {
+            const local = s.recentWorkouts.find((w) => w.id === rw.id);
+            if (!local) return rw;
+            if (s.pendingSyncIds.includes(rw.id)) return local;
+            return pickNewerWorkout(local, rw);
+          });
+          const localOnlyPending = s.recentWorkouts.filter(
+            (w) => s.pendingSyncIds.includes(w.id) && !remote.find((rw) => rw.id === w.id),
+          );
+          return {
+            recentWorkouts: [...localOnlyPending, ...merged],
+            isLoadingHistory: false,
+          };
+        });
+      } catch (err) {
+        set({ error: getErrorMessage(err), isLoadingHistory: false });
+      }
+    },
 
-  loadActiveWorkout: async (userId) => {
-    try {
-      const workout = await fetchActiveWorkout(userId);
-      set({ activeWorkout: workout });
-    } catch (err) {
-      set({ error: (err as Error).message });
-    }
-  },
+    loadActiveWorkout: async (userId) => {
+      try {
+        const remote = await fetchActiveWorkout(userId);
+        const state = get();
+        const local = state.activeWorkout;
+        if (local && state.pendingSyncIds.includes(local.id)) return;
+        if (!remote) {
+          set({ activeWorkout: null });
+          return;
+        }
+        if (!local || local.id !== remote.id) {
+          set({ activeWorkout: remote });
+          return;
+        }
+        set({ activeWorkout: pickNewerWorkout(local, remote) });
+      } catch (err) {
+        set({ error: getErrorMessage(err) });
+      }
+    },
 
-  clearError: () => set({ error: null }),
-});
+    loadRoutines: async (userId) => {
+      set({ isLoadingRoutines: true, error: null });
+      try {
+        const routines = await fetchRoutines(userId);
+        set({ routines, isLoadingRoutines: false });
+      } catch (err) {
+        set({ error: getErrorMessage(err), isLoadingRoutines: false });
+      }
+    },
+
+    saveRoutine: async (routine) => {
+      set((s) => {
+        const existing = s.routines.findIndex((r) => r.id === routine.id);
+        const next = [...s.routines];
+        if (existing >= 0) {
+          next[existing] = routine;
+        } else {
+          next.unshift(routine);
+        }
+        return { routines: next, error: null };
+      });
+      try {
+        await upsertRoutine(routine);
+      } catch (err) {
+        set({ error: getErrorMessage(err) });
+      }
+    },
+
+    removeRoutine: async (routineId) => {
+      set((s) => ({
+        routines: s.routines.filter((r) => r.id !== routineId),
+        error: null,
+      }));
+      try {
+        await deleteRoutineDoc(routineId);
+      } catch (err) {
+        set({ error: getErrorMessage(err) });
+      }
+    },
+
+    startRest: (seconds) => {
+      const duration = seconds ?? get().restDefaultSeconds;
+      if (duration <= 0) {
+        set({ restEndsAt: null, restDurationSeconds: 0 });
+        return;
+      }
+      const endsAt = new Date(Date.now() + duration * 1000).toISOString();
+      set({ restEndsAt: endsAt, restDurationSeconds: duration });
+    },
+
+    adjustRest: (deltaSeconds) => {
+      const { restEndsAt, restDurationSeconds } = get();
+      if (!restEndsAt) return;
+      const newEnd = new Date(new Date(restEndsAt).getTime() + deltaSeconds * 1000);
+      if (newEnd.getTime() <= Date.now()) {
+        set({ restEndsAt: null, restDurationSeconds: 0 });
+        return;
+      }
+      set({
+        restEndsAt: newEnd.toISOString(),
+        restDurationSeconds: Math.max(1, restDurationSeconds + deltaSeconds),
+      });
+    },
+
+    skipRest: () => set({ restEndsAt: null, restDurationSeconds: 0 }),
+
+    setRestDefault: (seconds) => {
+      if (!Number.isFinite(seconds) || seconds < 0) return;
+      set({ restDefaultSeconds: Math.round(seconds) });
+    },
+
+    setOnline: (isOnline) => {
+      const wasOnline = get().isOnline;
+      set({ isOnline });
+      if (!wasOnline && isOnline && get().pendingSyncIds.length > 0) {
+        void get().retryPendingSyncs();
+      }
+    },
+
+    retryPendingSyncs: async () => {
+      if (get().isSyncing) return;
+      const ids = [...get().pendingSyncIds];
+      if (ids.length === 0) return;
+      set({ isSyncing: true, error: null });
+
+      for (const id of ids) {
+        if (!get().isOnline) break;
+        await serializeUpsert(id);
+        if (get().pendingSyncIds.includes(id)) break;
+      }
+      set({ isSyncing: false });
+    },
+
+    clearError: () => set({ error: null }),
+  };
+};
 
 export const gymStore = createPersistedStore<GymState>("gymStore", createGymSlice, {
   partialize: (state) => ({
     activeWorkout: state.activeWorkout,
     recentWorkouts: state.recentWorkouts,
+    routines: state.routines,
+    restEndsAt: state.restEndsAt,
+    restDurationSeconds: state.restDurationSeconds,
+    restDefaultSeconds: state.restDefaultSeconds,
+    pendingSyncIds: state.pendingSyncIds,
   }),
 });
 
