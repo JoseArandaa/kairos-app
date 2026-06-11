@@ -36,7 +36,8 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.0",
     "zustand": "^5.0.8",
-    "expo-haptics": "~15.0.8"
+    "expo-haptics": "~15.0.8",
+    "@react-native-community/netinfo": "11.4.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
