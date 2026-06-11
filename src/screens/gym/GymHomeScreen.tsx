@@ -1,11 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+  Alert,
+} from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
-import { Lightning } from "phosphor-react-native";
+import { Barbell, Lightning } from "phosphor-react-native";
 import { useAuthStore } from "../../store/authStore";
 import { useGymStore } from "../../store/gymStore";
+import { CardContainer } from "../../components/common/CardContainer";
+import { EmptyState } from "../../components/common/EmptyState";
 import { EditDurationModal } from "../../components/gym/EditDurationModal";
+import { WorkoutHistoryRow } from "../../components/gym/WorkoutHistoryRow";
 import { primaryShadow } from "../../theme/styles";
 import { colors } from "../../theme/colors";
 import type { GymStackNavigationProp } from "../../types";
@@ -16,9 +28,12 @@ export default function GymHomeScreen() {
   const navigation = useNavigation<GymStackNavigationProp>();
   const uid = useAuthStore((s) => s.uid);
   const activeWorkout = useGymStore((s) => s.activeWorkout);
+  const recentWorkouts = useGymStore((s) => s.recentWorkouts);
+  const isLoadingHistory = useGymStore((s) => s.isLoadingHistory);
   const error = useGymStore((s) => s.error);
   const startWorkout = useGymStore((s) => s.startWorkout);
   const loadActiveWorkout = useGymStore((s) => s.loadActiveWorkout);
+  const loadRecentWorkouts = useGymStore((s) => s.loadRecentWorkouts);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const clearError = useGymStore((s) => s.clearError);
 
@@ -28,7 +43,8 @@ export default function GymHomeScreen() {
   useEffect(() => {
     if (!uid) return;
     void loadActiveWorkout(uid);
-  }, [uid, loadActiveWorkout]);
+    void loadRecentWorkouts(uid);
+  }, [uid, loadActiveWorkout, loadRecentWorkouts]);
 
   useEffect(() => {
     if (!activeWorkout) return;
@@ -88,6 +104,35 @@ export default function GymHomeScreen() {
             {activeWorkout ? "Continuar entrenamiento" : "Iniciar entrenamiento"}
           </Text>
         </TouchableOpacity>
+
+        <CardContainer
+          cardTitle="Historial"
+          gradientColors={["#1a233a26", "#1a233a14"]}
+          borderColor="#1a233a14"
+          icon={<Barbell weight="fill" size={20} color={colors.navy} />}
+          iconColor={colors.navy}
+          detailsText={recentWorkouts.length > 5 ? "Ver todo" : ""}
+          onViewDetails={
+            recentWorkouts.length > 5 ? () => navigation.navigate("WorkoutHistory") : undefined
+          }
+        >
+          {isLoadingHistory && recentWorkouts.length === 0 ? (
+            <ActivityIndicator style={styles.loader} color={colors.navy} />
+          ) : recentWorkouts.length === 0 ? (
+            <EmptyState title="Aún no hay entrenamientos completados." style={styles.empty} />
+          ) : (
+            <View>
+              {recentWorkouts.slice(0, 5).map((w, i, arr) => (
+                <WorkoutHistoryRow
+                  key={w.id}
+                  workout={w}
+                  onPress={() => navigation.navigate("WorkoutDetail", { workoutId: w.id })}
+                  isLast={i === arr.length - 1}
+                />
+              ))}
+            </View>
+          )}
+        </CardContainer>
       </ScrollView>
 
       {activeWorkout && (
@@ -134,6 +179,9 @@ const styles = StyleSheet.create({
     ...primaryShadow,
   },
   startButtonText: { color: colors.textOnDark, fontSize: 16, fontWeight: "600" },
+
+  loader: { marginVertical: 24 },
+  empty: { paddingVertical: 24 },
 
   errorBanner: {
     backgroundColor: colors.dangerBg,
