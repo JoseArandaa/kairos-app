@@ -11,16 +11,18 @@ import {
 } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
-import { Barbell, Lightning } from "phosphor-react-native";
+import { Barbell, Lightning, ListChecks, CaretRight } from "phosphor-react-native";
 import { useAuthStore } from "../../store/authStore";
 import { useGymStore } from "../../store/gymStore";
 import { CardContainer } from "../../components/common/CardContainer";
 import { EmptyState } from "../../components/common/EmptyState";
+import { SoftActionButton } from "../../components/common/SoftActionButton";
 import { EditDurationModal } from "../../components/gym/EditDurationModal";
 import { WorkoutHistoryRow } from "../../components/gym/WorkoutHistoryRow";
+import { mockRoutineTemplates } from "../../data/MockRoutineTemplates";
 import { primaryShadow } from "../../theme/styles";
 import { colors } from "../../theme/colors";
-import type { GymStackNavigationProp } from "../../types";
+import type { GymStackNavigationProp, Routine, RoutineTemplate } from "../../types";
 
 const STALE_WORKOUT_THRESHOLD_MS = 5 * 60 * 60 * 1000;
 
@@ -29,11 +31,13 @@ export default function GymHomeScreen() {
   const uid = useAuthStore((s) => s.uid);
   const activeWorkout = useGymStore((s) => s.activeWorkout);
   const recentWorkouts = useGymStore((s) => s.recentWorkouts);
+  const routines = useGymStore((s) => s.routines);
   const isLoadingHistory = useGymStore((s) => s.isLoadingHistory);
   const error = useGymStore((s) => s.error);
   const startWorkout = useGymStore((s) => s.startWorkout);
   const loadActiveWorkout = useGymStore((s) => s.loadActiveWorkout);
   const loadRecentWorkouts = useGymStore((s) => s.loadRecentWorkouts);
+  const loadRoutines = useGymStore((s) => s.loadRoutines);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const clearError = useGymStore((s) => s.clearError);
 
@@ -44,7 +48,8 @@ export default function GymHomeScreen() {
     if (!uid) return;
     void loadActiveWorkout(uid);
     void loadRecentWorkouts(uid);
-  }, [uid, loadActiveWorkout, loadRecentWorkouts]);
+    void loadRoutines(uid);
+  }, [uid, loadActiveWorkout, loadRecentWorkouts, loadRoutines]);
 
   useEffect(() => {
     if (!activeWorkout) return;
@@ -85,6 +90,18 @@ export default function GymHomeScreen() {
     navigation.navigate("ActiveWorkout", { workoutId: w.id });
   };
 
+  const openDetail = (entry: Routine | RoutineTemplate) => {
+    navigation.navigate("RoutineDetail", {
+      kind: entry.isBuiltIn ? "template" : "routine",
+      id: entry.id,
+    });
+  };
+
+  const quickStartList: (Routine | RoutineTemplate)[] = [
+    ...routines.slice(0, 3),
+    ...mockRoutineTemplates.slice(0, Math.max(0, 3 - routines.length)),
+  ];
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"] as Edge[]}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.pageBg} />
@@ -104,6 +121,49 @@ export default function GymHomeScreen() {
             {activeWorkout ? "Continuar entrenamiento" : "Iniciar entrenamiento"}
           </Text>
         </TouchableOpacity>
+
+        <CardContainer
+          cardTitle="Rutinas"
+          gradientColors={["#1a233a26", "#1a233a14"]}
+          borderColor="#1a233a14"
+          icon={<ListChecks weight="fill" size={20} color={colors.navy} />}
+          iconColor={colors.navy}
+          detailsText="Ver todas"
+          onViewDetails={() => navigation.navigate("Routines")}
+        >
+          {quickStartList.length === 0 ? (
+            <EmptyState title="No hay rutinas disponibles." style={styles.empty} />
+          ) : (
+            <View style={styles.routinesList}>
+              {quickStartList.map((entry) => (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={styles.routineRow}
+                  onPress={() => openDetail(entry)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ver detalle de ${entry.name}`}
+                >
+                  <View style={styles.routineRowMain}>
+                    <Text style={styles.routineName}>{entry.name}</Text>
+                    <Text style={styles.routineMeta}>
+                      {entry.exercises.length} ejercicios
+                      {entry.isBuiltIn ? " · Plantilla" : ""}
+                    </Text>
+                  </View>
+                  <CaretRight size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <SoftActionButton
+            label="Crear rutina"
+            onPress={() => navigation.navigate("RoutineEditor", undefined)}
+            size="md"
+            style={styles.createRoutineBtn}
+          />
+        </CardContainer>
 
         <CardContainer
           cardTitle="Historial"
@@ -179,6 +239,20 @@ const styles = StyleSheet.create({
     ...primaryShadow,
   },
   startButtonText: { color: colors.textOnDark, fontSize: 16, fontWeight: "600" },
+
+  routinesList: { marginTop: 4 },
+  routineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSoft,
+  },
+  routineRowMain: { flex: 1 },
+  routineName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, marginBottom: 2 },
+  routineMeta: { fontSize: 12, color: colors.textMuted },
+
+  createRoutineBtn: { marginTop: 8 },
 
   loader: { marginVertical: 24 },
   empty: { paddingVertical: 24 },
