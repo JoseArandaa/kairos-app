@@ -17,11 +17,7 @@ const GymStack: React.FC = () => (
     <Stack.Screen
       name="ActiveWorkout"
       component={ActiveWorkoutScreen}
-      options={{
-        headerShown: true,
-        title: "Workout",
-        headerBackTitle: "Back",
-      }}
+      options={{ headerShown: true, title: "Workout", headerBackTitle: "Back" }}
     />
   </Stack.Navigator>
 );

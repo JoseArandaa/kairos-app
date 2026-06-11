@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   setDoc,
   getDocs,
@@ -10,20 +11,23 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { Workout } from "../types";
+import type { Routine, Workout } from "../types";
 
 const WORKOUTS_COLLECTION = "workouts";
+const ROUTINES_COLLECTION = "routines";
 
-interface WorkoutDoc extends Omit<Workout, "startedAt" | "completedAt"> {
+interface WorkoutDoc extends Omit<Workout, "startedAt" | "completedAt" | "updatedAt"> {
   startedAt: Timestamp;
   completedAt?: Timestamp;
+  updatedAt: Timestamp;
 }
 
 function toFirestore(workout: Workout): WorkoutDoc {
-  const { startedAt, completedAt, ...rest } = workout;
+  const { startedAt, completedAt, updatedAt, ...rest } = workout;
   const doc: WorkoutDoc = {
     ...rest,
     startedAt: Timestamp.fromDate(new Date(startedAt)),
+    updatedAt: Timestamp.fromDate(new Date(updatedAt)),
   };
   if (completedAt) {
     doc.completedAt = Timestamp.fromDate(new Date(completedAt));
@@ -36,6 +40,10 @@ function fromFirestore(data: WorkoutDoc): Workout {
     ...data,
     startedAt: data.startedAt.toDate().toISOString(),
     completedAt: data.completedAt?.toDate().toISOString(),
+    // Legacy docs may not have updatedAt — fall back to startedAt
+    updatedAt: data.updatedAt
+      ? data.updatedAt.toDate().toISOString()
+      : data.startedAt.toDate().toISOString(),
   };
 }
 
@@ -66,4 +74,44 @@ export async function fetchActiveWorkout(userId: string): Promise<Workout | null
   const snap = await getDocs(q);
   if (snap.empty) return null;
   return fromFirestore(snap.docs[0].data() as WorkoutDoc);
+}
+
+interface RoutineDoc extends Omit<Routine, "createdAt" | "updatedAt"> {
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+function routineToFirestore(routine: Routine): RoutineDoc {
+  const { createdAt, updatedAt, ...rest } = routine;
+  return {
+    ...rest,
+    createdAt: Timestamp.fromDate(new Date(createdAt)),
+    updatedAt: Timestamp.fromDate(new Date(updatedAt)),
+  };
+}
+
+function routineFromFirestore(data: RoutineDoc): Routine {
+  return {
+    ...data,
+    createdAt: data.createdAt.toDate().toISOString(),
+    updatedAt: data.updatedAt.toDate().toISOString(),
+  };
+}
+
+export async function upsertRoutine(routine: Routine): Promise<void> {
+  await setDoc(doc(db, ROUTINES_COLLECTION, routine.id), routineToFirestore(routine));
+}
+
+export async function deleteRoutine(routineId: string): Promise<void> {
+  await deleteDoc(doc(db, ROUTINES_COLLECTION, routineId));
+}
+
+export async function fetchRoutines(userId: string): Promise<Routine[]> {
+  const q = query(
+    collection(db, ROUTINES_COLLECTION),
+    where("userId", "==", userId),
+    orderBy("updatedAt", "desc"),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => routineFromFirestore(d.data() as RoutineDoc));
 }
