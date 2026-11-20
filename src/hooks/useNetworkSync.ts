@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import NetInfo from "@react-native-community/netinfo";
+import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { gymStore, useGymStore } from "../store/gymStore";
 
 function drainPending() {
@@ -9,20 +9,28 @@ function drainPending() {
   }
 }
 
+// `null` means NetInfo hasn't resolved yet: only a definite `false` counts as offline.
+const isReachable = (state: NetInfoState) =>
+  state.isConnected !== false && state.isInternetReachable !== false;
+
 export function useNetworkSync(): void {
   const setOnline = useGymStore((s) => s.setOnline);
 
   useEffect(() => {
+    let unsubscribeHydration: (() => void) | undefined;
     const unsubscribe = NetInfo.addEventListener((state) => {
-      setOnline(!!state.isConnected);
+      setOnline(isReachable(state));
     });
 
     NetInfo.fetch().then((state) => {
-      setOnline(!!state.isConnected);
+      setOnline(isReachable(state));
       if (gymStore.persist.hasHydrated()) drainPending();
-      else gymStore.persist.onFinishHydration(drainPending);
+      else unsubscribeHydration = gymStore.persist.onFinishHydration(drainPending);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      unsubscribeHydration?.();
+    };
   }, [setOnline]);
 }
