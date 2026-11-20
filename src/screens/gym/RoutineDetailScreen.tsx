@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -25,13 +25,7 @@ export default function RoutineDetailScreen() {
   const startWorkoutFromTemplate = useGymStore((s) => s.startWorkoutFromTemplate);
   const startWorkoutFromRoutine = useGymStore((s) => s.startWorkoutFromRoutine);
   const removeRoutine = useGymStore((s) => s.removeRoutine);
-  const [showActiveNotice, setShowActiveNotice] = useState(false);
-
-  useEffect(() => {
-    if (!showActiveNotice) return;
-    const timer = setTimeout(() => setShowActiveNotice(false), 5000);
-    return () => clearTimeout(timer);
-  }, [showActiveNotice]);
+  const cancelWorkout = useGymStore((s) => s.cancelWorkout);
 
   const entry: Routine | RoutineTemplate | undefined = useMemo(() => {
     if (route.params.kind === "template") {
@@ -53,15 +47,27 @@ export default function RoutineDetailScreen() {
 
   const handleStart = () => {
     if (!uid) return;
-    const w =
-      "userId" in entry
-        ? startWorkoutFromRoutine(uid, entry)
-        : startWorkoutFromTemplate(uid, entry);
-    if (!w) {
-      setShowActiveNotice(true);
-      return;
+    const launch = () => {
+      void cancelWorkout();
+      const w =
+        "userId" in entry
+          ? startWorkoutFromRoutine(uid, entry)
+          : startWorkoutFromTemplate(uid, entry);
+      if (!w) return;
+      navigation.navigate("ActiveWorkout", { workoutId: w.id });
+    };
+    if (activeWorkout) {
+      Alert.alert(
+        "Ya hay un entrenamiento activo",
+        "Si inicias esta rutina, se descartará el actual.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Descartar y empezar", style: "destructive", onPress: launch },
+        ],
+      );
+    } else {
+      launch();
     }
-    navigation.navigate("ActiveWorkout", { workoutId: w.id });
   };
 
   const handleEdit = () => {
@@ -150,20 +156,6 @@ export default function RoutineDetailScreen() {
             <Text style={[styles.secondaryBtnText, { color: colors.danger }]}>Eliminar</Text>
           </TouchableOpacity>
         </View>
-      )}
-
-      {showActiveNotice && activeWorkout && (
-        <TouchableOpacity
-          style={styles.notice}
-          onPress={() => navigation.navigate("ActiveWorkout", { workoutId: activeWorkout.id })}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Ir al entrenamiento activo"
-        >
-          <Text style={styles.noticeText}>
-            Ya tienes un entrenamiento activo. Finalízalo antes de empezar otro.
-          </Text>
-        </TouchableOpacity>
       )}
 
       <TouchableOpacity
@@ -265,15 +257,6 @@ const styles = StyleSheet.create({
   editBtn: {},
   deleteBtn: { borderColor: colors.danger },
   secondaryBtnText: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
-
-  notice: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: colors.navy,
-  },
-  noticeText: { color: colors.textOnDark, fontSize: 13, fontWeight: "600", textAlign: "center" },
 
   startBtn: {
     flexDirection: "row",
