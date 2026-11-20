@@ -414,6 +414,14 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         const state = get();
         const local = state.activeWorkout;
         if (remote && state.pendingCancelled.some((w) => w.id === remote.id)) return;
+        if (
+          remote &&
+          (state.pendingSyncIds.includes(remote.id) ||
+            inFlight.has(remote.id) ||
+            state.recentWorkouts.some((w) => w.id === remote.id && w.status !== "active"))
+        ) {
+          return;
+        }
         // A different workout was started while we were fetching: the fetch is stale.
         if (local && local.id !== idAtStart) return;
         if (local && (state.pendingSyncIds.includes(local.id) || inFlight.has(local.id))) return;
