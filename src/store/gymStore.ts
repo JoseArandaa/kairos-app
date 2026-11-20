@@ -142,16 +142,19 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
           s.pendingCancelled.find((w) => w.id === workoutId));
   };
 
-  const syncRoutine = async (id: string) => {
+  const routineInFlight = new Map<string, Promise<void>>();
+
+  const runRoutineSync = async (id: string) => {
     const op = get().pendingRoutineOps[id];
     if (!op || !get().isOnline) return;
     const routine = get().routines.find((r) => r.id === id);
     try {
       if (op === "save") {
-        if (routine) await upsertRoutine(routine);
+        if (routine) await withTimeout(upsertRoutine(routine));
       } else {
-        await deleteRoutineDoc(id);
+        await withTimeout(deleteRoutineDoc(id));
       }
+      if (get().pendingRoutineOps[id] !== op) return;
       // Edited again while in flight: stay pending so the newer version syncs next time.
       if (op === "save" && get().routines.find((r) => r.id === id) !== routine) return;
       set((s) => {
@@ -162,6 +165,15 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     } catch (err) {
       set({ error: getErrorMessage(err) });
     }
+  };
+
+  const syncRoutine = (id: string): Promise<void> => {
+    const promise = (routineInFlight.get(id) ?? Promise.resolve()).then(() => runRoutineSync(id));
+    routineInFlight.set(id, promise);
+    void promise.finally(() => {
+      if (routineInFlight.get(id) === promise) routineInFlight.delete(id);
+    });
+    return promise;
   };
 
   const serializeUpsert = (workoutId: string, explicit?: Workout): Promise<void> => {
