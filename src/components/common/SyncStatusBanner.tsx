@@ -18,7 +18,9 @@ export function SyncStatusBanner() {
   const insets = useSafeAreaInsets();
   const isOnline = useGymStore((s) => s.isOnline);
   const isSyncing = useGymStore((s) => s.isSyncing);
-  const pendingCount = useGymStore((s) => s.pendingSyncIds.length);
+  const pendingCount = useGymStore(
+    (s) => s.pendingSyncIds.length + Object.keys(s.pendingRoutineOps).length,
+  );
   const retryPendingSyncs = useGymStore((s) => s.retryPendingSyncs);
 
   const status = getStatus(isOnline, isSyncing, pendingCount);
