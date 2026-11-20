@@ -94,6 +94,16 @@ function applyWorkoutUpdate(
   return { workout, patch: { recentWorkouts: next } };
 }
 
+const WRITE_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms = WRITE_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Sin respuesta del servidor")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
   const inFlight = new Map<string, Promise<void>>();
 
@@ -115,7 +125,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
   const tryUpsert = async (workout: Workout): Promise<boolean> => {
     if (!get().isOnline) return false;
     try {
-      await upsertWorkout(workout);
+      await withTimeout(upsertWorkout(workout));
       if (get().error) set({ error: null });
       return true;
     } catch (err) {
