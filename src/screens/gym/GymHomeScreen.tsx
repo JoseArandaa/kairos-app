@@ -87,6 +87,7 @@ export default function GymHomeScreen() {
       return;
     }
     const w = activeWorkout ?? startWorkout(uid);
+    if (!w) return;
     navigation.navigate("ActiveWorkout", { workoutId: w.id });
   };
 

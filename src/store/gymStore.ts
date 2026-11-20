@@ -37,9 +37,10 @@ export interface GymState {
   isOnline: boolean;
   isSyncing: boolean;
 
-  startWorkout: (_userId: string, _name?: string) => Workout;
-  startWorkoutFromTemplate: (_userId: string, _template: RoutineTemplate) => Workout;
-  startWorkoutFromRoutine: (_userId: string, _routine: Routine) => Workout;
+  // Return null (and start nothing) when a workout is already active.
+  startWorkout: (_userId: string, _name?: string) => Workout | null;
+  startWorkoutFromTemplate: (_userId: string, _template: RoutineTemplate) => Workout | null;
+  startWorkoutFromRoutine: (_userId: string, _routine: Routine) => Workout | null;
   addExerciseToWorkout: (_workoutId: string, _exercise: Exercise) => void;
   setExerciseRest: (
     _workoutId: string,
@@ -215,7 +216,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
   const createAndPersistWorkout = (
     userId: string,
     opts: { name: string; exercises: WorkoutExercise[] },
-  ): Workout => {
+  ): Workout | null => {
+    if (get().activeWorkout) return null;
     const now = new Date().toISOString();
     const workout: Workout = {
       id: makeId("wo"),
