@@ -32,6 +32,8 @@ export interface GymState {
   restDurationSeconds: number;
   restDefaultSeconds: number;
   pendingSyncIds: string[];
+  pendingCancelled: Workout[];
+  pendingRoutineOps: Record<string, "save" | "delete">;
   isOnline: boolean;
   isSyncing: boolean;
 
@@ -104,7 +106,10 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
   };
 
   const dequeueSync = (workoutId: string) => {
-    set((s) => ({ pendingSyncIds: s.pendingSyncIds.filter((id) => id !== workoutId) }));
+    set((s) => ({
+      pendingSyncIds: s.pendingSyncIds.filter((id) => id !== workoutId),
+      pendingCancelled: s.pendingCancelled.filter((w) => w.id !== workoutId),
+    }));
   };
 
   const tryUpsert = async (workout: Workout): Promise<boolean> => {
@@ -123,7 +128,30 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     const s = get();
     return s.activeWorkout?.id === workoutId
       ? s.activeWorkout
-      : s.recentWorkouts.find((w) => w.id === workoutId);
+      : (s.recentWorkouts.find((w) => w.id === workoutId) ??
+          s.pendingCancelled.find((w) => w.id === workoutId));
+  };
+
+  const syncRoutine = async (id: string) => {
+    const op = get().pendingRoutineOps[id];
+    if (!op || !get().isOnline) return;
+    const routine = get().routines.find((r) => r.id === id);
+    try {
+      if (op === "save") {
+        if (routine) await upsertRoutine(routine);
+      } else {
+        await deleteRoutineDoc(id);
+      }
+      // Edited again while in flight: stay pending so the newer version syncs next time.
+      if (op === "save" && get().routines.find((r) => r.id === id) !== routine) return;
+      set((s) => {
+        const { [id]: _done, ...rest } = s.pendingRoutineOps;
+        void _done;
+        return { pendingRoutineOps: rest };
+      });
+    } catch (err) {
+      set({ error: getErrorMessage(err) });
+    }
   };
 
   const serializeUpsert = (workoutId: string, explicit?: Workout): Promise<void> => {
@@ -193,6 +221,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     restDurationSeconds: 0,
     restDefaultSeconds: 60,
     pendingSyncIds: [],
+    pendingCancelled: [],
+    pendingRoutineOps: {},
     isOnline: true,
     isSyncing: false,
 
@@ -289,7 +319,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
               ? { ...ex, sets: ex.sets.filter((s) => s.id !== setId) }
               : ex,
           )
-          .filter((ex) => ex.sets.length > 0)
+          .filter((ex) => ex.id !== workoutExerciseId || ex.sets.length > 0)
           .map((ex, idx) => ({ ...ex, order: idx })),
       }));
     },
@@ -344,8 +374,13 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         status: "cancelled",
         updatedAt: new Date().toISOString(),
       };
-      set({ activeWorkout: null, restEndsAt: null, restDurationSeconds: 0 });
-      await serializeUpsert(cancelled.id, cancelled);
+      set((s) => ({
+        activeWorkout: null,
+        restEndsAt: null,
+        restDurationSeconds: 0,
+        pendingCancelled: [...s.pendingCancelled, cancelled],
+      }));
+      await serializeUpsert(cancelled.id);
     },
 
     loadRecentWorkouts: async (userId) => {
@@ -373,11 +408,15 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     },
 
     loadActiveWorkout: async (userId) => {
+      const idAtStart = get().activeWorkout?.id;
       try {
         const remote = await fetchActiveWorkout(userId);
         const state = get();
         const local = state.activeWorkout;
-        if (local && state.pendingSyncIds.includes(local.id)) return;
+        if (remote && state.pendingCancelled.some((w) => w.id === remote.id)) return;
+        // A different workout was started while we were fetching: the fetch is stale.
+        if (local && local.id !== idAtStart) return;
+        if (local && (state.pendingSyncIds.includes(local.id) || inFlight.has(local.id))) return;
         if (!remote) {
           set({ activeWorkout: null });
           return;
@@ -395,8 +434,17 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     loadRoutines: async (userId) => {
       set({ isLoadingRoutines: true, error: null });
       try {
-        const routines = await fetchRoutines(userId);
-        set({ routines, isLoadingRoutines: false });
+        const remote = await fetchRoutines(userId);
+        set((s) => {
+          const ops = s.pendingRoutineOps;
+          const kept = remote
+            .filter((r) => ops[r.id] !== "delete")
+            .map((r) => (ops[r.id] === "save" ? (s.routines.find((l) => l.id === r.id) ?? r) : r));
+          const localOnly = s.routines.filter(
+            (r) => ops[r.id] === "save" && !remote.some((x) => x.id === r.id),
+          );
+          return { routines: [...localOnly, ...kept], isLoadingRoutines: false };
+        });
       } catch (err) {
         set({ error: getErrorMessage(err), isLoadingRoutines: false });
       }
@@ -411,25 +459,22 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         } else {
           next.unshift(routine);
         }
-        return { routines: next, error: null };
+        return {
+          routines: next,
+          pendingRoutineOps: { ...s.pendingRoutineOps, [routine.id]: "save" },
+          error: null,
+        };
       });
-      try {
-        await upsertRoutine(routine);
-      } catch (err) {
-        set({ error: getErrorMessage(err) });
-      }
+      await syncRoutine(routine.id);
     },
 
     removeRoutine: async (routineId) => {
       set((s) => ({
         routines: s.routines.filter((r) => r.id !== routineId),
+        pendingRoutineOps: { ...s.pendingRoutineOps, [routineId]: "delete" },
         error: null,
       }));
-      try {
-        await deleteRoutineDoc(routineId);
-      } catch (err) {
-        set({ error: getErrorMessage(err) });
-      }
+      await syncRoutine(routineId);
     },
 
     startRest: (seconds) => {
@@ -466,7 +511,12 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     setOnline: (isOnline) => {
       const wasOnline = get().isOnline;
       set({ isOnline });
-      if (!wasOnline && isOnline && get().pendingSyncIds.length > 0) {
+      const s = get();
+      if (
+        !wasOnline &&
+        isOnline &&
+        (s.pendingSyncIds.length > 0 || Object.keys(s.pendingRoutineOps).length > 0)
+      ) {
         void get().retryPendingSyncs();
       }
     },
@@ -474,8 +524,11 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     retryPendingSyncs: async () => {
       if (get().isSyncing) return;
       const ids = [...get().pendingSyncIds];
-      if (ids.length === 0) return;
+      const routineIds = Object.keys(get().pendingRoutineOps);
+      if (ids.length === 0 && routineIds.length === 0) return;
       set({ isSyncing: true, error: null });
+
+      for (const id of routineIds) await syncRoutine(id);
 
       for (const id of ids) {
         if (!get().isOnline) break;
@@ -498,6 +551,8 @@ export const gymStore = createPersistedStore<GymState>("gymStore", createGymSlic
     restDurationSeconds: state.restDurationSeconds,
     restDefaultSeconds: state.restDefaultSeconds,
     pendingSyncIds: state.pendingSyncIds,
+    pendingCancelled: state.pendingCancelled,
+    pendingRoutineOps: state.pendingRoutineOps,
   }),
 });
 

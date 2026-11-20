@@ -2,6 +2,13 @@ import { useEffect } from "react";
 import NetInfo from "@react-native-community/netinfo";
 import { gymStore, useGymStore } from "../store/gymStore";
 
+function drainPending() {
+  const s = gymStore.getState();
+  if (s.isOnline && (s.pendingSyncIds.length > 0 || Object.keys(s.pendingRoutineOps).length > 0)) {
+    void s.retryPendingSyncs();
+  }
+}
+
 export function useNetworkSync(): void {
   const setOnline = useGymStore((s) => s.setOnline);
 
@@ -11,14 +18,9 @@ export function useNetworkSync(): void {
     });
 
     NetInfo.fetch().then((state) => {
-      const isConnected = !!state.isConnected;
-      setOnline(isConnected);
-      // On startup: if we come online and have pending changes, drain.
-      // setOnline only auto-drains on transition; this covers the initial fetch.
-      if (isConnected) {
-        const s = gymStore.getState();
-        if (s.pendingSyncIds.length > 0) void s.retryPendingSyncs();
-      }
+      setOnline(!!state.isConnected);
+      if (gymStore.persist.hasHydrated()) drainPending();
+      else gymStore.persist.onFinishHydration(drainPending);
     });
 
     return unsubscribe;

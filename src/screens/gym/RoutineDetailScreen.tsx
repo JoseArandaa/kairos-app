@@ -25,6 +25,7 @@ export default function RoutineDetailScreen() {
   const startWorkoutFromTemplate = useGymStore((s) => s.startWorkoutFromTemplate);
   const startWorkoutFromRoutine = useGymStore((s) => s.startWorkoutFromRoutine);
   const removeRoutine = useGymStore((s) => s.removeRoutine);
+  const cancelWorkout = useGymStore((s) => s.cancelWorkout);
 
   const entry: Routine | RoutineTemplate | undefined = useMemo(() => {
     if (route.params.kind === "template") {
@@ -47,9 +48,11 @@ export default function RoutineDetailScreen() {
   const handleStart = () => {
     if (!uid) return;
     const launch = () => {
-      const w = entry.isBuiltIn
-        ? startWorkoutFromTemplate(uid, entry)
-        : startWorkoutFromRoutine(uid, entry);
+      void cancelWorkout();
+      const w =
+        "userId" in entry
+          ? startWorkoutFromRoutine(uid, entry)
+          : startWorkoutFromTemplate(uid, entry);
       navigation.navigate("ActiveWorkout", { workoutId: w.id });
     };
     if (activeWorkout) {

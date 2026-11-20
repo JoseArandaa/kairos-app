@@ -22,10 +22,12 @@ interface WorkoutDoc extends Omit<Workout, "startedAt" | "completedAt" | "update
   updatedAt: Timestamp;
 }
 
+const stripUndefined = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+
 function toFirestore(workout: Workout): WorkoutDoc {
   const { startedAt, completedAt, updatedAt, ...rest } = workout;
   const doc: WorkoutDoc = {
-    ...rest,
+    ...stripUndefined(rest),
     startedAt: Timestamp.fromDate(new Date(startedAt)),
     updatedAt: Timestamp.fromDate(new Date(updatedAt)),
   };
@@ -84,7 +86,7 @@ interface RoutineDoc extends Omit<Routine, "createdAt" | "updatedAt"> {
 function routineToFirestore(routine: Routine): RoutineDoc {
   const { createdAt, updatedAt, ...rest } = routine;
   return {
-    ...rest,
+    ...stripUndefined(rest),
     createdAt: Timestamp.fromDate(new Date(createdAt)),
     updatedAt: Timestamp.fromDate(new Date(updatedAt)),
   };
