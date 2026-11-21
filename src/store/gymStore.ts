@@ -97,6 +97,8 @@ function applyWorkoutUpdate(
 }
 
 const WRITE_TIMEOUT_MS = 10_000;
+const RETRY_BASE_MS = 5_000;
+const RETRY_MAX_MS = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms = WRITE_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -146,6 +148,18 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
 
   const routineInFlight = new Map<string, Promise<void>>();
 
+  // Failures while online never trigger a connectivity event, so retry with exponential backoff.
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryDelay = RETRY_BASE_MS;
+  const scheduleRetry = () => {
+    if (retryTimer || !get().isOnline) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void get().retryPendingSyncs();
+    }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+  };
+
   const runRoutineSync = async (id: string) => {
     const op = get().pendingRoutineOps[id];
     if (!op || !get().isOnline) return;
@@ -166,6 +180,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
       });
     } catch (err) {
       set({ error: getErrorMessage(err) });
+      scheduleRetry();
     }
   };
 
@@ -189,8 +204,12 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
           return;
         }
         const ok = await tryUpsert(workout);
-        if (ok) dequeueSync(workoutId);
-        else enqueueSync(workoutId);
+        if (ok) {
+          dequeueSync(workoutId);
+        } else {
+          enqueueSync(workoutId);
+          scheduleRetry();
+        }
       });
     inFlight.set(workoutId, promise);
     void promise.finally(() => {
@@ -568,6 +587,13 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         await serializeUpsert(id);
       }
       set({ isSyncing: false });
+
+      const s = get();
+      if (s.pendingSyncIds.length > 0 || Object.keys(s.pendingRoutineOps).length > 0) {
+        scheduleRetry();
+      } else {
+        retryDelay = RETRY_BASE_MS;
+      }
     },
 
     clearError: () => set({ error: null }),
