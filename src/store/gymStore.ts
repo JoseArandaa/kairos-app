@@ -481,10 +481,11 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
           set({ activeWorkout: null });
           return;
         }
-        if (!local || local.id !== remote.id) {
+        if (!local) {
           set({ activeWorkout: remote });
           return;
         }
+        if (local.id !== remote.id) return;
         set({ activeWorkout: pickNewerWorkout(local, remote) });
       } catch (err) {
         set({ error: getErrorMessage(err) });
