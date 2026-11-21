@@ -364,14 +364,9 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     removeWorkoutSet: (workoutId, workoutExerciseId, setId) => {
       void mutateWorkout(workoutId, (w) => ({
         ...w,
-        exercises: w.exercises
-          .map((ex) =>
-            ex.id === workoutExerciseId
-              ? { ...ex, sets: ex.sets.filter((s) => s.id !== setId) }
-              : ex,
-          )
-          .filter((ex) => ex.id !== workoutExerciseId || ex.sets.length > 0)
-          .map((ex, idx) => ({ ...ex, order: idx })),
+        exercises: w.exercises.map((ex) =>
+          ex.id === workoutExerciseId ? { ...ex, sets: ex.sets.filter((s) => s.id !== setId) } : ex,
+        ),
       }));
     },
 
