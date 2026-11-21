@@ -566,7 +566,6 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
       for (const id of ids) {
         if (!get().isOnline) break;
         await serializeUpsert(id);
-        if (get().pendingSyncIds.includes(id)) break;
       }
       set({ isSyncing: false });
     },
