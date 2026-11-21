@@ -630,6 +630,14 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
 export const gymStore = createPersistedStore<GymState>("gymStore", createGymSlice, {
   version: 1,
   migrate: (persisted) => persisted as GymState,
+  merge: (persisted, current) => {
+    const merged = { ...current, ...(persisted as Partial<GymState>) };
+    if (merged.restEndsAt && new Date(merged.restEndsAt).getTime() <= Date.now()) {
+      merged.restEndsAt = null;
+      merged.restDurationSeconds = 0;
+    }
+    return merged;
+  },
   partialize: (state) => ({
     activeWorkout: state.activeWorkout,
     recentWorkouts: state.recentWorkouts,

@@ -6,6 +6,7 @@ import type { StateCreator } from "zustand";
 
 interface PersistedStoreOptions<TState> {
   partialize?: (_state: TState) => Partial<TState>;
+  merge?: (_persisted: unknown, _current: TState) => TState;
   version?: number;
   migrate?: (_persisted: unknown, _version: number) => TState | Promise<TState>;
 }
@@ -23,6 +24,7 @@ export function createPersistedStore<TState extends object>(
         ...(options.partialize ? { partialize: options.partialize } : {}),
         ...(options.version !== undefined ? { version: options.version } : {}),
         ...(options.migrate ? { migrate: options.migrate } : {}),
+        ...(options.merge ? { merge: options.merge } : {}),
       }),
       { name: `${name}-devtools`, host: "localhost", port: 8000 },
     ),
