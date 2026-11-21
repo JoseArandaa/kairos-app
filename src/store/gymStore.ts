@@ -98,13 +98,16 @@ function applyWorkoutUpdate(
 const sanitizeAmount = (n: number): number => (Number.isFinite(n) && n > 0 ? n : 0);
 
 const WRITE_TIMEOUT_MS = 10_000;
+const TIMEOUT_MESSAGE = "Sin respuesta del servidor";
+const reportWriteError = (err: unknown): { error: string } | null =>
+  err instanceof Error && err.message === TIMEOUT_MESSAGE ? null : { error: getErrorMessage(err) };
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms = WRITE_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Sin respuesta del servidor")), ms);
+    timer = setTimeout(() => reject(new Error(TIMEOUT_MESSAGE)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -144,7 +147,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
       if (get().error) set({ error: null });
       return true;
     } catch (err) {
-      set({ error: getErrorMessage(err) });
+      const failure = reportWriteError(err);
+      if (failure) set(failure);
       return false;
     }
   };
@@ -188,7 +192,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         return { pendingRoutineOps: rest };
       });
     } catch (err) {
-      set({ error: getErrorMessage(err) });
+      const failure = reportWriteError(err);
+      if (failure) set(failure);
       scheduleRetry();
     }
   };
