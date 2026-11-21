@@ -440,7 +440,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     },
 
     loadRecentWorkouts: async (userId) => {
-      set({ isLoadingHistory: true, error: null });
+      set({ isLoadingHistory: true });
       try {
         await whenHydrated();
         const remote = await fetchRecentWorkouts(userId);
@@ -498,7 +498,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     },
 
     loadRoutines: async (userId) => {
-      set({ isLoadingRoutines: true, error: null });
+      set({ isLoadingRoutines: true });
       try {
         await whenHydrated();
         const remote = await fetchRoutines(userId);
