@@ -95,6 +95,8 @@ function applyWorkoutUpdate(
   return { workout, patch: { recentWorkouts: next } };
 }
 
+const sanitizeAmount = (n: number): number => (Number.isFinite(n) && n > 0 ? n : 0);
+
 const WRITE_TIMEOUT_MS = 10_000;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
@@ -332,7 +334,10 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
       await mutateWorkout(workoutId, (w) => ({ ...w, name: trimmed }));
     },
 
-    editWorkoutSet: (workoutId, workoutExerciseId, setId, partial) => {
+    editWorkoutSet: (workoutId, workoutExerciseId, setId, rawPartial) => {
+      const partial = { ...rawPartial };
+      if (partial.weight !== undefined) partial.weight = sanitizeAmount(partial.weight);
+      if (partial.reps !== undefined) partial.reps = sanitizeAmount(partial.reps);
       void mutateWorkout(workoutId, (w) => ({
         ...w,
         exercises: w.exercises.map((ex) =>
@@ -349,8 +354,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     addWorkoutSet: (workoutId, workoutExerciseId, weight, reps) => {
       const newSet: WorkoutSet = {
         id: makeId("set"),
-        weight,
-        reps,
+        weight: sanitizeAmount(weight),
+        reps: sanitizeAmount(reps),
         completed: false,
       };
       void mutateWorkout(workoutId, (w) => ({
