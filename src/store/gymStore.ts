@@ -76,6 +76,7 @@ export interface GymState {
   setOnline: (_isOnline: boolean) => void;
   retryPendingSyncs: () => Promise<void>;
   clearError: () => void;
+  reset: () => void;
 }
 
 function applyWorkoutUpdate(
@@ -571,6 +572,23 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     },
 
     clearError: () => set({ error: null }),
+
+    reset: () =>
+      set({
+        activeWorkout: null,
+        recentWorkouts: [],
+        routines: [],
+        isLoadingHistory: false,
+        isLoadingRoutines: false,
+        isFinishing: false,
+        error: null,
+        restEndsAt: null,
+        restDurationSeconds: 0,
+        pendingSyncIds: [],
+        pendingCancelled: [],
+        pendingRoutineOps: {},
+        isSyncing: false,
+      }),
   };
 };
 

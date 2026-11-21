@@ -3,6 +3,7 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
 import { authStore } from "../store/authStore";
 import { userStore } from "../store/userStore";
+import { gymStore } from "../store/gymStore";
 
 interface UseAuthReturn {
   user: User | null;
@@ -40,6 +41,7 @@ export const useAuth = (): UseAuthReturn => {
         } else {
           authStore.getState().clearAuth();
           userStore.getState().clear();
+          gymStore.getState().reset();
         }
         setLoading(false);
       },
