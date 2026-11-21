@@ -613,7 +613,12 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
 
     clearError: () => set({ error: null }),
 
-    reset: () =>
+    reset: () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      retryDelay = RETRY_BASE_MS;
       set({
         activeWorkout: null,
         recentWorkouts: [],
@@ -628,7 +633,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         pendingCancelled: [],
         pendingRoutineOps: {},
         isSyncing: false,
-      }),
+      });
+    },
   };
 };
 
