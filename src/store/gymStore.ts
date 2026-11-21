@@ -37,7 +37,6 @@ export interface GymState {
   isOnline: boolean;
   isSyncing: boolean;
 
-  // Return null (and start nothing) when a workout is already active.
   startWorkout: (_userId: string, _name?: string) => Workout | null;
   startWorkoutFromTemplate: (_userId: string, _template: RoutineTemplate) => Workout | null;
   startWorkoutFromRoutine: (_userId: string, _routine: Routine) => Workout | null;
@@ -108,6 +107,16 @@ function withTimeout<T>(promise: Promise<T>, ms = WRITE_TIMEOUT_MS): Promise<T> 
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function whenHydrated(): Promise<void> {
+  if (gymStore.persist.hasHydrated()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = gymStore.persist.onFinishHydration(() => {
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
 const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
   const inFlight = new Map<string, Promise<void>>();
 
@@ -148,7 +157,6 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
 
   const routineInFlight = new Map<string, Promise<void>>();
 
-  // Failures while online never trigger a connectivity event, so retry with exponential backoff.
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryDelay = RETRY_BASE_MS;
   const scheduleRetry = () => {
@@ -171,7 +179,6 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         await withTimeout(deleteRoutineDoc(id));
       }
       if (get().pendingRoutineOps[id] !== op) return;
-      // Edited again while in flight: stay pending so the newer version syncs next time.
       if (op === "save" && get().routines.find((r) => r.id === id) !== routine) return;
       set((s) => {
         const { [id]: _done, ...rest } = s.pendingRoutineOps;
@@ -430,6 +437,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     loadRecentWorkouts: async (userId) => {
       set({ isLoadingHistory: true, error: null });
       try {
+        await whenHydrated();
         const remote = await fetchRecentWorkouts(userId);
         set((s) => {
           const merged = remote.map((rw) => {
@@ -452,8 +460,9 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     },
 
     loadActiveWorkout: async (userId) => {
-      const idAtStart = get().activeWorkout?.id;
       try {
+        await whenHydrated();
+        const idAtStart = get().activeWorkout?.id;
         const remote = await fetchActiveWorkout(userId);
         const state = get();
         const local = state.activeWorkout;
@@ -466,7 +475,6 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
         ) {
           return;
         }
-        // A different workout was started while we were fetching: the fetch is stale.
         if (local && local.id !== idAtStart) return;
         if (local && (state.pendingSyncIds.includes(local.id) || inFlight.has(local.id))) return;
         if (!remote) {
@@ -486,6 +494,7 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
     loadRoutines: async (userId) => {
       set({ isLoadingRoutines: true, error: null });
       try {
+        await whenHydrated();
         const remote = await fetchRoutines(userId);
         set((s) => {
           const ops = s.pendingRoutineOps;
@@ -618,6 +627,8 @@ const createGymSlice: StateCreator<GymState, [], []> = (set, get) => {
 };
 
 export const gymStore = createPersistedStore<GymState>("gymStore", createGymSlice, {
+  version: 1,
+  migrate: (persisted) => persisted as GymState,
   partialize: (state) => ({
     activeWorkout: state.activeWorkout,
     recentWorkouts: state.recentWorkouts,
