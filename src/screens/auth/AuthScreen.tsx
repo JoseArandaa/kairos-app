@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,7 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
-  Platform,
   Animated,
-  Dimensions,
   Image,
 } from "react-native";
 import {
@@ -20,6 +18,8 @@ import {
 import { auth } from "../../services/firebase";
 import { AuthScreenProps } from "../../types";
 import { SvgUri } from "react-native-svg";
+import { SegmentedSwitch } from "../../components/common/SegmentedSwitch";
+import { getErrorMessage } from "../../utils";
 
 const AuthScreen: React.FC<AuthScreenProps> = () => {
   const [email, setEmail] = useState<string>("jose.aranda.et28@gmail.com");
@@ -27,11 +27,6 @@ const AuthScreen: React.FC<AuthScreenProps> = () => {
   const [password, setPassword] = useState<string>("94213471Jose.");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin");
-
-  const tabIndicatorPosition = useRef(new Animated.Value(0)).current;
-
-  const screenWidth = Dimensions.get("window").width;
-  const tabWidth = (screenWidth - 60) / 2;
 
   const handleAuth = async (): Promise<void> => {
     if (!email || !password) {
@@ -74,36 +69,24 @@ const AuthScreen: React.FC<AuthScreenProps> = () => {
 
         Alert.alert("Success", "Account created successfully!");
       }
-    } catch (error: any) {
-      Alert.alert("Error", error.message);
+    } catch (error) {
+      Alert.alert("Error", getErrorMessage(error));
     }
   };
 
   const switchTab = (tab: "signin" | "signup"): void => {
     if (tab === activeTab) return;
-
     setActiveTab(tab);
-
     if (tab === "signin") {
       setConfirmPassword("");
       setUsername("");
     }
-
-    Animated.timing(tabIndicatorPosition, {
-      toValue: tab === "signin" ? 0 : 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
   };
-
-  useEffect(() => {
-    tabIndicatorPosition.setValue(activeTab === "signin" ? 0 : 1);
-  }, []);
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={process.env.EXPO_OS === "ios" ? "padding" : "height"}
     >
       <Animated.View style={styles.content}>
         {/* Logo */}
@@ -113,52 +96,15 @@ const AuthScreen: React.FC<AuthScreenProps> = () => {
         </View>
 
         {/* Tab Navigation */}
-        <View style={styles.tabContainer}>
-          <Animated.View
-            style={[
-              styles.tabIndicator,
-              {
-                transform: [
-                  {
-                    translateX: tabIndicatorPosition.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, tabWidth],
-                    }),
-                  },
-                ],
-              },
+        <View style={styles.tabsWrapper}>
+          <SegmentedSwitch
+            value={activeTab}
+            onChange={switchTab}
+            options={[
+              { value: "signin", label: "Sign In" },
+              { value: "signup", label: "Sign Up" },
             ]}
           />
-          <TouchableOpacity style={styles.tab} onPress={() => switchTab("signin")}>
-            <Animated.Text
-              style={[
-                styles.tabText,
-                {
-                  color: tabIndicatorPosition.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["#fff", "#7f8c8d"],
-                  }),
-                },
-              ]}
-            >
-              Sign In
-            </Animated.Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab} onPress={() => switchTab("signup")}>
-            <Animated.Text
-              style={[
-                styles.tabText,
-                {
-                  color: tabIndicatorPosition.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["#7f8c8d", "#fff"],
-                  }),
-                },
-              ]}
-            >
-              Sign Up
-            </Animated.Text>
-          </TouchableOpacity>
         </View>
 
         {/* Form */}
@@ -265,48 +211,9 @@ const styles = StyleSheet.create({
     color: "#7f8c8d",
     letterSpacing: 8,
   },
-  tabContainer: {
-    flexDirection: "row",
+  tabsWrapper: {
     width: "100%",
     marginBottom: 40,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    shadowColor: "#000",
-    borderWidth: 1,
-    borderColor: "#1a233a",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-    position: "relative",
-    overflow: "hidden",
-  },
-  tabIndicator: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: "50%",
-    backgroundColor: "#1a233a",
-    borderRadius: 16,
-    zIndex: 1,
-  },
-  tab: {
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 16,
-    minWidth: 100,
-    width: "50%",
-    alignItems: "center",
-    zIndex: 2,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: "500",
   },
   formWrapper: {
     width: "100%",

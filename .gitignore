@@ -74,7 +74,11 @@ google-services.json
 GoogleService-Info.plist
 firebase-debug.log
 firebase-debug.*.log
+.firebase/
 
+skills-lock.json
+.agents/
+.claude/
 # ============================================================================
 # LOGS & DEBUG
 # ============================================================================

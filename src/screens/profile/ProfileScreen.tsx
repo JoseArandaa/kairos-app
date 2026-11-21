@@ -2,16 +2,34 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { signOut } from "firebase/auth";
 import { auth } from "../../services/firebase";
+import { gymStore } from "../../store/gymStore";
+import { getErrorMessage } from "../../utils";
 import { ProfileScreenProps } from "../../types";
 
 const ProfileScreen: React.FC<ProfileScreenProps> = () => {
-  const handleLogout = async (): Promise<void> => {
+  const doLogout = async (): Promise<void> => {
     try {
       await signOut(auth);
       Alert.alert("Success", "Logged out successfully!");
-    } catch (error: any) {
-      Alert.alert("Error", error.message);
+    } catch (error: unknown) {
+      Alert.alert("Error", getErrorMessage(error));
     }
+  };
+
+  const handleLogout = (): void => {
+    const { pendingSyncIds, pendingRoutineOps } = gymStore.getState();
+    if (pendingSyncIds.length === 0 && Object.keys(pendingRoutineOps).length === 0) {
+      void doLogout();
+      return;
+    }
+    Alert.alert(
+      "Unsynced data",
+      "Some workouts or routines have not been saved to the server yet. If you log out now they will be lost.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log out anyway", style: "destructive", onPress: () => void doLogout() },
+      ],
+    );
   };
 
   return (

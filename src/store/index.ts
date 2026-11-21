@@ -4,24 +4,27 @@ import { createStore } from "zustand/vanilla";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { StateCreator } from "zustand";
 
+interface PersistedStoreOptions<TState> {
+  partialize?: (_state: TState) => Partial<TState>;
+  merge?: (_persisted: unknown, _current: TState) => TState;
+  version?: number;
+  migrate?: (_persisted: unknown, _version: number) => TState | Promise<TState>;
+}
+
 export function createPersistedStore<TState extends object>(
   name: string,
   createState: StateCreator<TState, [], []>,
+  options: PersistedStoreOptions<TState> = {},
 ) {
   return createStore<TState>()(
-    // Usamos devtools para poder ver el estado en el navegador
     devtools(
-      // Usamos persist para poder persistir el estado en el dispositivo
-      // Web: localStorage
-      // Android: AsyncStorage
-      // iOS: AsyncStorage
       persist(createState, {
         name,
         storage: createJSONStorage(() => AsyncStorage),
-        // Usamos createJSONStorage para poder persistir el estado en el dispositivo
-        // Web: localStorage
-        // Android: AsyncStorage
-        // iOS: AsyncStorage
+        ...(options.partialize ? { partialize: options.partialize } : {}),
+        ...(options.version !== undefined ? { version: options.version } : {}),
+        ...(options.migrate ? { migrate: options.migrate } : {}),
+        ...(options.merge ? { merge: options.merge } : {}),
       }),
       { name: `${name}-devtools`, host: "localhost", port: 8000 },
     ),
